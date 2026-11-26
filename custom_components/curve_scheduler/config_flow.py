@@ -16,7 +16,7 @@ from homeassistant.config_entries import (
 from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
-import voluptuous as vol
+import probatio as vol
 
 from .axis import axis_config
 from .const import (
@@ -71,7 +71,7 @@ def target_defaults(hass: HomeAssistant, entity_id: str) -> dict[str, Any]:
     try:
         minimum = float(state.attributes[keys[0]])
         maximum = float(state.attributes[keys[1]])
-    except (KeyError, TypeError, ValueError):
+    except KeyError, TypeError, ValueError:
         return defaults
     if minimum < maximum:
         defaults[CONF_MIN] = minimum
@@ -173,7 +173,7 @@ def validate_settings(user_input: dict[str, Any]) -> dict[str, str]:
             or axis["step"] > axis["max"] - axis["min"]
         ):
             errors[CONF_X_MAX] = "invalid_axis"
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         errors[CONF_X_MAX] = "invalid_axis"
     if source == "sensor" and not user_input.get(CONF_INPUT):
         errors[CONF_INPUT] = "input_required"

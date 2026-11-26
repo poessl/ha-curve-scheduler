@@ -8,7 +8,7 @@ from typing import Any
 from freezegun.api import FrozenDateTimeFactory
 from homeassistant.core import HomeAssistant
 import pytest
-from pytest_homeassistant_custom_component.typing import WebSocketGenerator
+from pytest_homeassistant.typing import WebSocketGenerator
 
 from .conftest import TARGET, make_entry, setup_entry
 

@@ -335,6 +335,10 @@ The card uses these commands. None of them requires admin rights.
 
 ## Development
 
+Use Python 3.14.2+ (3.14 series) and Node.js 24. Development and tests pin
+Home Assistant and the official `pytest-homeassistant` fixtures to the same
+2026.11.3 release; upgrade those two pins together.
+
 ```bash
 # backend
 pip install -r requirements_dev.txt
@@ -352,7 +356,7 @@ npm run demo          # demo page with a fake backend on http://localhost:8765/d
 python scripts/generate_vectors.py
 ```
 
-For the local Compose instance (Home Assistant 2026.11.0):
+For the local Compose instance (Home Assistant 2026.11.3):
 
 ```bash
 mkdir -p dev/config

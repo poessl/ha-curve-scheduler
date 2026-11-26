@@ -16,7 +16,7 @@ from homeassistant.core import (
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.util import dt as dt_util
-import voluptuous as vol
+import probatio as vol
 
 from .const import (
     ATTR_CONFIG_ENTRY_ID,

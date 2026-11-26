@@ -13,7 +13,7 @@ from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.util import dt as dt_util
-import voluptuous as vol
+import probatio as vol
 
 from .const import DOMAIN
 from .holidays import HolidayProvider

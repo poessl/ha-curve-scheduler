@@ -11,7 +11,7 @@ from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import (
+from pytest_homeassistant.common import (
     async_fire_time_changed,
     async_mock_service,
 )
@@ -120,7 +120,11 @@ async def test_unavailable_target(
     with caplog.at_level(logging.WARNING):
         for _ in range(3):
             await tick(hass, freezer, timedelta(minutes=5))
-    warnings = [r for r in caplog.records if "unavailable" in r.getMessage()]
+    warnings = [
+        r
+        for r in caplog.records
+        if r.name == "custom_components.curve_scheduler.runtime" and "unavailable" in r.getMessage()
+    ]
     assert len(warnings) == 1
     assert hass.states.get(TARGET).state == STATE_UNAVAILABLE
     # Sensor keeps showing the computed value.

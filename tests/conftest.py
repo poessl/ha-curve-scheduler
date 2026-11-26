@@ -9,7 +9,7 @@ from unittest.mock import patch
 from homeassistant.core import HomeAssistant
 from homeassistant.setup import async_setup_component
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.curve_scheduler.const import (
     CONF_HOLIDAY_SOURCE,
@@ -25,11 +25,6 @@ from custom_components.curve_scheduler.const import (
 )
 
 TARGET = "input_number.zirkulation_soll"
-
-
-@pytest.fixture(autouse=True)
-def auto_enable_custom_integrations(enable_custom_integrations: Any) -> None:
-    """Enable loading custom integrations in all tests."""
 
 
 @pytest.fixture(autouse=True)

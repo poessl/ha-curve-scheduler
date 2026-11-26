@@ -530,7 +530,7 @@ class CurveSchedulerRuntime:
             raw = state.attributes.get(ATTR_TEMPERATURE)
         try:
             return float(raw)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
     def target_available(self) -> bool:

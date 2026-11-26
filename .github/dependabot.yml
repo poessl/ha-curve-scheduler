@@ -8,6 +8,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      homeassistant:
+        patterns:
+          - homeassistant
+          - pytest-homeassistant
   - package-ecosystem: npm
     directory: /frontend
     schedule:

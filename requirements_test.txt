@@ -1,1 +1,4 @@
-pytest-homeassistant-custom-component==0.13.316
+# Keep Home Assistant and its official test fixtures on matching releases.
+homeassistant==2026.11.3
+pytest-homeassistant==2026.11.3
+pytest-cov==7.1.0

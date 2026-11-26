@@ -1,6 +1,6 @@
 services:
   homeassistant:
-    image: ghcr.io/home-assistant/home-assistant:2026.11.0
+    image: ghcr.io/home-assistant/home-assistant:2026.11.3
     ports:
       - "127.0.0.1:${CURVE_SCHEDULER_PORT:-8124}:8123"
     environment:

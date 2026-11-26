@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import async_fire_time_changed
+from pytest_homeassistant.common import async_fire_time_changed
 
 from custom_components.curve_scheduler.axis import axis_config, evaluate_curve, input_value
 from custom_components.curve_scheduler.const import DOMAIN

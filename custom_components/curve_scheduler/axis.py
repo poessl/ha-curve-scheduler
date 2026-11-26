@@ -43,7 +43,7 @@ def input_value(hass: HomeAssistant, at: datetime, axis: dict[str, Any]) -> floa
         state = hass.states.get(axis["input_entity"]) if axis["input_entity"] else None
         try:
             value = float(state.state) if state else math.nan
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
     if not math.isfinite(value):
         return None

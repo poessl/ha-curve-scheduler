@@ -65,5 +65,7 @@ async def test_device_links_to_editor(hass: HomeAssistant, target: str) -> None:
     from .conftest import make_entry, setup_entry
 
     entry = await setup_entry(hass, make_entry())
-    device = dr.async_get(hass).async_get_device(identifiers={("curve_scheduler", entry.entry_id)})
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        ("curve_scheduler", entry.entry_id), entry.entry_id
+    )
     assert device.configuration_url == f"homeassistant://curve-scheduler?entry_id={entry.entry_id}"

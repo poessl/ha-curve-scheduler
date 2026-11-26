@@ -3,5 +3,5 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements_dev.txt homeassistant home-assistant-frontend
+python3 -m pip install -r requirements_dev.txt
 (cd frontend && npm ci && npm run build)

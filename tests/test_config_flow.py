@@ -5,7 +5,7 @@ from __future__ import annotations
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
-import voluptuous as vol
+import probatio as vol
 
 from custom_components.curve_scheduler.const import (
     CONF_HOLIDAY_SOURCE,
