@@ -159,3 +159,16 @@ describe("helpers", () => {
     expect(suggestFreeTime([])).toBe(720);
   });
 });
+
+it("matches any selected weekday and rejects empty, duplicate or unknown selections", () => {
+  const data = schedule();
+  data.activations = [{ type: "weekday", days: ["mon", "wed", "fri"], profile: "day_off" }];
+  expect(validateSchedule(data, 20, 70)).toEqual([]);
+  expect(resolveDay(data, "2026-11-23", () => false).profileId).toBe("day_off");
+  expect(resolveDay(data, "2026-11-24", () => false).profileId).toBe("workday");
+  expect(resolveDay(data, "2026-11-25", () => false).profileId).toBe("day_off");
+  for (const days of [[], ["mon", "mon"], ["bad"]]) {
+    data.activations[0].days = days as typeof data.activations[0]["days"];
+    expect(validateSchedule(data, 20, 70).some(issue => issue.path === "activations.0")).toBe(true);
+  }
+});

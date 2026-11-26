@@ -6,6 +6,7 @@
  */
 
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { repeat } from "lit/directives/repeat.js";
 import { fetchHolidays, saveSchedule, type HomeAssistant } from "./api";
 import { formatNumber, formatValue, parseNumber } from "./format";
 import { isTranslationKey, translator, type Translate, type TranslationKey } from "./i18n";
@@ -34,10 +35,11 @@ import {
   type Schedule,
   type SchedulePoint,
   type ValidationIssue,
-  type Weekday,
+  type Activation,
 } from "./model";
 import { sharedStyles } from "./styles";
 import "./curve";
+import "./numeric-editor";
 import type { CurveNoticeDetail, PointsChangedDetail } from "./curve";
 
 type Tab = "profiles" | "week" | "exceptions";
@@ -67,6 +69,8 @@ export class CurveSchedulerEditor extends LitElement {
     _conflict: { state: true },
     _month: { state: true },
     _holidays: { state: true },
+    dragActivation: { state: true },
+    dragTarget: { state: true },
   };
 
   declare hass: HomeAssistant;
@@ -130,9 +134,11 @@ export class CurveSchedulerEditor extends LitElement {
     window.removeEventListener("beforeunload", this.onBeforeUnload);
     this.removeEventListener("keydown", this.onPointKeyDown);
     clearTimeout(this.messageTimer);
+    clearTimeout(this.dragStartTimer);
   }
 
   private onPointKeyDown = (event: KeyboardEvent): void => {
+    if (this.config.axis && this.config.axis.source !== "time_of_day") return;
     if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || this._saving || this._tab !== "profiles") return;
     const path = event.composedPath();
     const typing = path.some(el => el instanceof HTMLElement && (el.matches("input, textarea, select") || el.isContentEditable));
@@ -155,7 +161,7 @@ export class CurveSchedulerEditor extends LitElement {
     if (changed.has("data") && this.data && !this._saving) {
       if (!this._draft) {
         this.resetTo(this.data);
-      } else if (this.data.revision !== this._baseRevision) {
+      } else if (this.data.revision !== this._baseRevision || JSON.stringify(changed.get("data")?.config) !== JSON.stringify(this.data.config)) {
         if (this.dirty) {
           this._conflict = true;
         } else {
@@ -169,7 +175,7 @@ export class CurveSchedulerEditor extends LitElement {
   }
 
   protected updated(changed: PropertyValues<this>): void {
-    if ((changed.has("_tab") || changed.has("_month")) && this._tab === "week") {
+    if ((changed.has("_tab") || changed.has("_month") || changed.has("_draft")) && this._tab === "week") {
       void this.loadHolidays(this._month);
     }
     if (changed.has("_draft") || changed.has("_base")) {
@@ -285,7 +291,7 @@ export class CurveSchedulerEditor extends LitElement {
   }
 
   async save(): Promise<void> {
-    const issues = validateSchedule(this._draft, this.data.config.min, this.data.config.max);
+    const issues = validateSchedule(this._draft, this.data.config.min, this.data.config.max, this.config.axis);
     if (issues.length) {
       this._issues = issues;
       this.showMessage({ kind: "error", text: this.t("editor.fix_errors") }, 0);
@@ -391,6 +397,7 @@ export class CurveSchedulerEditor extends LitElement {
           return this.t("usage.holiday_profile");
         }
         const index = Number(usage.split(".")[1]);
+        if (usage.startsWith("activations.")) return this.t("usage.activation", { number: index + 1 });
         const exception = this._draft.exceptions[index];
         return exception?.note || this.t("usage.exception", { number: index + 1 });
       })
@@ -425,6 +432,7 @@ export class CurveSchedulerEditor extends LitElement {
         name,
         color: nextColor(draft),
         points: [{ t: "06:00", v: middle }],
+        ...(this.config.axis && this.config.axis.source !== "time_of_day" ? { curve: [{ x: this.config.axis.min, v: middle }] } : {}),
       };
     });
     this.selectProfile(id);
@@ -509,7 +517,8 @@ export class CurveSchedulerEditor extends LitElement {
     }
     const id = this._profileId;
     this.change((draft) => {
-      draft.profiles[id].points = clone(source.points);
+      if (this.config.axis && this.config.axis.source !== "time_of_day") draft.profiles[id].curve = clone(source.curve ?? []);
+      else draft.profiles[id].points = clone(source.points);
     });
     this._selected = null;
   }
@@ -605,16 +614,73 @@ export class CurveSchedulerEditor extends LitElement {
   // ------------------------------------------------------------------
   // Week and exceptions
 
-  private setWeekday(day: Weekday, profileId: string): void {
-    this.change((draft) => {
-      draft.week[day] = profileId;
-    });
+  private dragActivation: number | null = null;
+  private dragTarget: number | null = null;
+  private reorderAnimation = 0;
+  private dragStartTimer?: ReturnType<typeof setTimeout>;
+
+  private activationRects(): Map<number, DOMRect> {
+    return new Map([...this.renderRoot.querySelectorAll<HTMLElement>(".activation")]
+      .map(el => [Number(el.dataset.index), el.getBoundingClientRect()]));
   }
 
-  private setHolidayProfile(profileId: string): void {
-    this.change((draft) => {
-      draft.holiday_profile = profileId;
+  private async animateActivations(before: Map<number, DOMRect>, newIndex = (index: number) => index): Promise<void> {
+    const generation = ++this.reorderAnimation;
+    await this.updateComplete;
+    if (generation !== this.reorderAnimation || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    for (const [index, rect] of before) {
+      const el = this.renderRoot.querySelector<HTMLElement>(`.activation[data-index="${newIndex(index)}"]`);
+      if (!el) continue;
+      el.getAnimations?.().forEach(animation => animation.cancel());
+      const after = el.getBoundingClientRect();
+      const dy = rect.top - after.top;
+      if (dy) el.animate?.([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }],
+        { duration: 220, easing: "cubic-bezier(.2,.8,.2,1)" });
+    }
+  }
+
+  private moveActivation(from: number, to: number): void {
+    if (from === to || to < 0 || to >= (this._draft.activations?.length ?? 0)) return;
+    const before = this.activationRects();
+    this.change(draft => {
+      const entries = draft.activations!;
+      entries.splice(to, 0, entries.splice(from, 1)[0]);
     });
+    void this.animateActivations(before, index => index === from ? to
+      : from < to && index > from && index <= to ? index - 1
+      : from > to && index >= to && index < from ? index + 1 : index);
+  }
+
+  private previewActivation(event: DragEvent, to: number): void {
+    if (this.dragActivation === null) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+    to = Math.max(0, Math.min(to, this._draft.activations!.length - 1));
+    if (to === this.dragTarget) return;
+    const before = this.activationRects();
+    this.dragTarget = to;
+    void this.animateActivations(before);
+  }
+
+  private finishActivationDrag(drop: boolean): void {
+    clearTimeout(this.dragStartTimer);
+    const from = this.dragActivation;
+    const to = this.dragTarget;
+    if (from === null) return;
+    const before = this.activationRects();
+    this.dragActivation = null;
+    this.dragTarget = null;
+    if (drop && to !== null && from !== to) {
+      // Preview already shows the final positions; commit one undo step on drop.
+      this.change(draft => { draft.activations!.splice(to, 0, draft.activations!.splice(from, 1)[0]); });
+      void this.animateActivations(before, index => index === from ? to
+        : from < to && index > from && index <= to ? index - 1
+        : from > to && index >= to && index < from ? index + 1 : index);
+    } else void this.animateActivations(before);
+  }
+
+  private updateActivation(index: number, fields: Partial<Activation>): void {
+    this.change(draft => { Object.assign(draft.activations![index], fields); });
   }
 
   private today(): string {
@@ -624,8 +690,8 @@ export class CurveSchedulerEditor extends LitElement {
   private addException(): void {
     const today = this.today();
     const profile =
-      Object.keys(this._draft.profiles).find((id) => /urlaub|holiday|vacation/i.test(id)) ??
-      this._draft.holiday_profile;
+      Object.keys(this._draft.profiles).find((id) => /urlaub|holiday|vacation|day_off/i.test(id)) ??
+      Object.keys(this._draft.profiles)[0];
     this.change((draft) => {
       draft.exceptions.push({
         from: today,
@@ -660,17 +726,17 @@ export class CurveSchedulerEditor extends LitElement {
   }
 
   private async loadHolidays(month: string): Promise<void> {
-    if (!this.config.holiday_source || this._holidays[month] || !this.hass) {
-      return;
-    }
-    const start = month;
+    if (!this.hass) return;
     const date = parseIsoDate(month);
     const end = isoDate(new Date(date.getFullYear(), date.getMonth() + 1, 0, 12));
-    try {
-      const result = await fetchHolidays(this.hass, this.data.entry_id, start, end);
-      this._holidays = { ...this._holidays, [month]: new Set(result.holidays) };
-    } catch {
-      this._holidays = { ...this._holidays, [month]: new Set() };
+    const sources = new Set((this._draft.activations ?? []).filter(a => a.type === "holiday").map(a => a.source).filter((s): s is string => !!s));
+    for (const source of sources) {
+      const key = `${month}/${source}`;
+      if (this._holidays[key]) continue;
+      try {
+        const result = await fetchHolidays(this.hass, this.data.entry_id, month, end, source);
+        this._holidays = { ...this._holidays, [key]: new Set(result.holidays) };
+      } catch { this._holidays = { ...this._holidays, [key]: new Set() }; }
     }
   }
 
@@ -904,7 +970,14 @@ export class CurveSchedulerEditor extends LitElement {
     if (!profile) {
       return this.renderProfileChips();
     }
-    const others = Object.entries(this._draft.profiles).filter(([id]) => id !== this._profileId);
+    if (this.config.axis && this.config.axis.source !== "time_of_day") {
+      return html`${this.renderProfileChips()} ${this.renderProfileSettings(profile)}
+        ${this.issuesFor(`profiles.${this._profileId}`).map(issue => html`<div class="notice error">${this.describeIssue(issue)}</div>`)}
+        <curve-scheduler-numeric-editor .hass=${this.hass} .data=${this.data} .language=${this.language}
+          style=${`--plan-color: ${profile.color}`} .saving=${this._saving} .embedded=${true} .editable=${true} .editing=${true} .points=${profile.curve ?? []}
+          @numeric-points-changed=${(e: CustomEvent) => this.change(draft => { draft.profiles[this._profileId].curve = e.detail; })}
+        ></curve-scheduler-numeric-editor>${this.renderCopyCurve()}`;
+    }
     const issues = this.issuesFor(`profiles.${this._profileId}`);
     return html`
       ${this.renderProfileChips()} ${this.renderProfileSettings(profile)}
@@ -954,7 +1027,13 @@ export class CurveSchedulerEditor extends LitElement {
         </label>
       </div>
       ${this.renderSelectedPoint(profile)} ${this.renderPointTable(profile)}
-      ${others.length
+      ${this.renderCopyCurve()}
+    `;
+  }
+
+  private renderCopyCurve() {
+    const others = Object.entries(this._draft.profiles).filter(([id]) => id !== this._profileId);
+    return html`      ${others.length
         ? html`<div class="row copy">
             <label class="field grow">
               ${this.t("profiles.copy_from")}
@@ -972,46 +1051,89 @@ export class CurveSchedulerEditor extends LitElement {
               ${this.t("profiles.copy")}
             </button>
           </div>`
-        : nothing}
-    `;
+        : nothing}`;
   }
 
   private renderWeekTab() {
-    const draft = this._draft;
-    return html`
-      <h3>${this.t("week.title")}</h3>
-      <div class="week">
-        ${WEEKDAYS.map((day) => {
-          const color = draft.profiles[draft.week[day]]?.color ?? "transparent";
-          return html`<label class="week-row" style="--row-color: ${color}">
-            <span class="day">${this.t(`week.day.${day}` as TranslationKey)}</span>
-            <select
-              data-day=${day}
-              @change=${(e: Event) =>
-                this.setWeekday(day, (e.target as HTMLSelectElement).value)}
-            >
-              ${this.profileOptions(draft.week[day])}
+    const entries = this._draft.activations ?? [];
+    const order = entries.map((entry, index) => ({ entry, index }));
+    if (this.dragActivation !== null && this.dragTarget !== null) {
+      order.splice(this.dragTarget, 0, order.splice(this.dragActivation, 1)[0]);
+    }
+    const text = (en: string, de: string) => this.language.startsWith("de") ? de : en;
+    return html`<h3>${this.t("editor.tab.week")}</h3>
+      <p class="muted">${text("First matching activation wins. If none matches, the first plan applies. Exceptions override activations.", "Die erste passende Aktivierung gilt. Ohne Treffer gilt der erste Plan. Ausnahmen haben Vorrang.")}</p>
+      <div class="activation-list ${this.dragActivation !== null ? "dragging" : ""}"
+        @dragover=${(e: DragEvent) => { if (this.dragActivation !== null) e.preventDefault(); }}
+        @drop=${(e: DragEvent) => { e.preventDefault(); this.finishActivationDrag(true); }}>
+      ${repeat(entries.map((entry, index) => ({ entry, index })), item => item.index, ({ entry, index }) => {
+        const position = order.findIndex(item => item.index === index);
+        return html`
+        ${this.renderActivationDropZone(position)}
+        <div class="activation ${index === this.dragActivation ? "drag-preview" : ""}" data-index=${index} style=${`order: ${position * 2 + 1}`} draggable="true"
+        @dragstart=${(e: DragEvent) => {
+          // Let the browser capture its native drag image before changing layout.
+          clearTimeout(this.dragStartTimer);
+          this.dragStartTimer = setTimeout(() => {
+            this.dragActivation = index; this.dragTarget = index;
+          }, 0);
+          if (e.dataTransfer) { e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", String(index)); }
+        }}
+        @dragover=${(e: DragEvent) => {
+          if (index === this.dragActivation) { e.preventDefault(); return; }
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          const remainingPosition = position - (this.dragTarget !== null && this.dragTarget < position ? 1 : 0);
+          this.previewActivation(e, remainingPosition + (e.clientY > rect.top + rect.height / 2 ? 1 : 0));
+        }}
+        @dragend=${() => this.finishActivationDrag(false)}>
+        <div class="row">
+          <label class="field grow">${text("Condition", "Bedingung")}
+            <select .value=${entry.type} @change=${(e: Event) => this.updateActivation(index, { type: (e.target as HTMLSelectElement).value as Activation["type"], days: ["mon"], source: "" })}>
+              <option value="weekday">${text("Day of the week", "Wochentag")}</option>
+              <option value="holiday">${text("Holiday calendar", "Feiertagskalender")}</option>
             </select>
-          </label>`;
-        })}
-        <label
-          class="week-row holiday"
-          style="--row-color: ${draft.profiles[draft.holiday_profile]?.color ?? "transparent"}"
-        >
-          <span class="day">${this.t("week.holiday")}</span>
-          <select
-            @change=${(e: Event) =>
-              this.setHolidayProfile((e.target as HTMLSelectElement).value)}
-          >
-            ${this.profileOptions(draft.holiday_profile)}
-          </select>
-        </label>
-        ${this.config.holiday_source
-          ? nothing
-          : html`<div class="muted">${this.t("week.no_holiday_source")}</div>`}
+          </label>
+          <label class="field grow">${text("Target plan", "Zielplan")}
+            <select @change=${(e: Event) => this.updateActivation(index, { profile: (e.target as HTMLSelectElement).value })}>${this.profileOptions(entry.profile)}</select>
+          </label>
+        </div>
+        ${entry.type === "weekday" ? html`<div class="field weekday-field">
+          <span id=${`weekday-label-${index}`}>${text("Days of the week", "Wochentage")}</span>
+          <details class="weekday-select">
+            <summary aria-labelledby=${`weekday-label-${index} weekday-summary-${index}`}>
+              <span id=${`weekday-summary-${index}`}>${WEEKDAYS.filter(day => (entry.days ?? [entry.day]).includes(day)).map(day => this.t(`week.day.${day}` as TranslationKey)).join(", ") || text("Select weekdays", "Wochentage auswählen")}</span>
+            </summary>
+            <div class="weekday-options" role="group" aria-labelledby=${`weekday-label-${index}`}>
+              ${WEEKDAYS.map(day => html`<label class="check">
+                <input type="checkbox" .checked=${(entry.days ?? [entry.day]).includes(day)}
+                  @change=${(e: Event) => {
+                    const selected = new Set(entry.days ?? (entry.day ? [entry.day] : []));
+                    if ((e.target as HTMLInputElement).checked) selected.add(day); else selected.delete(day);
+                    this.updateActivation(index, { days: WEEKDAYS.filter(day => selected.has(day)) });
+                  }}>${this.t(`week.day.${day}` as TranslationKey)}
+              </label>`)}
+            </div>
+          </details>
+        </div>` : html`<label class="field">${text("Calendar or Workday binary sensor (off = day off)", "Kalender oder Workday-Binärsensor (aus = freier Tag)")}
+            <ha-entity-picker .hass=${this.hass} .value=${entry.source ?? ""} .includeDomains=${["calendar", "binary_sensor"]} allow-custom-entity
+              @value-changed=${(e: CustomEvent) => this.updateActivation(index, { source: e.detail.value ?? "" })}></ha-entity-picker>
+          </label>`}
+        <div class="row">
+          <button aria-label=${text("Move activation up", "Aktivierung nach oben")} ?disabled=${index === 0} @click=${() => this.moveActivation(index, index - 1)}>↑</button>
+          <button aria-label=${text("Move activation down", "Aktivierung nach unten")} ?disabled=${index === entries.length - 1} @click=${() => this.moveActivation(index, index + 1)}>↓</button>
+          <button @click=${() => this.change(draft => { draft.activations!.splice(index, 1); })}>${text("Delete", "Löschen")}</button>
+        </div>
+      </div>`; })}
+      ${this.renderActivationDropZone(entries.length)}
       </div>
-      ${this.renderMonth()}
-    `;
+      <button ?disabled=${entries.length >= 200} @click=${() => this.change(draft => { (draft.activations ??= []).push({ type: "weekday", days: ["mon"], profile: Object.keys(draft.profiles)[0] }); })}>${text("Add activation", "Aktivierung hinzufügen")}</button>${this.renderMonth()}`;
+  }
+
+  private renderActivationDropZone(position: number) {
+    const text = this.language.startsWith("de") ? "Hier ablegen" : "Drop here";
+    return html`<div style=${`order: ${position * 2}`} class="activation-drop-zone ${this.dragTarget === position ? "active" : ""}"
+      @dragenter=${(e: DragEvent) => this.previewActivation(e, position)}
+      @dragover=${(e: DragEvent) => this.previewActivation(e, position)}>${text}</div>`;
   }
 
   private renderMonth() {
@@ -1020,7 +1142,6 @@ export class CurveSchedulerEditor extends LitElement {
     const month = first.getMonth();
     const days = new Date(year, month + 1, 0).getDate();
     const leading = (first.getDay() + 6) % 7;
-    const holidays = this._holidays[this._month] ?? new Set<string>();
     const today = this.today();
     const monthName = new Intl.DateTimeFormat(this.language, {
       month: "long",
@@ -1037,7 +1158,7 @@ export class CurveSchedulerEditor extends LitElement {
     }
     for (let d = 1; d <= days; d++) {
       const iso = isoDate(new Date(year, month, d, 12));
-      const resolved = resolveDay(this._draft, iso, (day) => holidays.has(day));
+      const resolved = resolveDay(this._draft, iso, (day, source) => this._holidays[`${this._month}/${source}`]?.has(day) ?? false);
       const profile = this._draft.profiles[resolved.profileId];
       const mark = resolved.reason === "holiday" ? "★" : resolved.reason === "exception" ? "✈" : "";
       cells.push(
@@ -1438,6 +1559,24 @@ export class CurveSchedulerEditor extends LitElement {
         flex: 1 1 auto;
         min-width: 0;
       }
+      /* Keep native drag sources attached; CSS order provides the live preview. */
+      .weekday-field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--secondary-text-color); }
+      .weekday-select { border: 1px solid var(--divider-color); border-radius: var(--zp-radius); color: var(--primary-text-color); font-size: 16px; }
+      .weekday-select summary { cursor: pointer; padding: 12px; min-height: var(--zp-touch); box-sizing: border-box; }
+      .weekday-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 4px 12px; padding: 0 12px 12px; }
+      .activation-list { display: flex; flex-direction: column; }
+      .activation-drop-zone { display: none; }
+      .dragging .activation-drop-zone {
+        display: flex; align-items: center; justify-content: center; min-height: 30px;
+        margin: 4px 0; border: 2px dashed var(--divider-color); border-radius: 8px;
+        color: var(--secondary-text-color); font-size: 13px;
+      }
+      .dragging .activation-drop-zone.active {
+        border-color: var(--primary-color); color: var(--primary-color);
+        background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+      }
+      .activation.drag-preview { opacity: .5; outline: 2px dashed var(--primary-color); }
+      .activation { display: flex; flex-direction: column; gap: 12px; border: 1px solid var(--divider-color); border-left: 4px solid var(--primary-color); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
       .week-row.holiday {
         margin-top: 8px;
       }

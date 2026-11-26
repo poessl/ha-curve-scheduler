@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../src/editor";
 import type { CurveSchedulerEditor } from "../src/editor";
+import type { NumericEditor } from "../src/numeric-editor";
 import type { CurveSchedulerCurve } from "../src/curve";
 import { instance } from "./fixtures/instance";
 import type { HomeAssistant } from "../src/api";
@@ -203,7 +204,7 @@ describe("curve-scheduler-editor: saving", () => {
   });
 
   it("does not send invalid data", async () => {
-    editor._draft = { ...editor._draft, holiday_profile: "missing" };
+    editor._draft = { ...editor._draft, activations: [{ type: "weekday", day: "mon", profile: "missing" }] };
     await editor.save();
     await settle();
     expect(callWS).not.toHaveBeenCalled();
@@ -220,16 +221,16 @@ describe("curve-scheduler-editor: saving", () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("changes the profile of Saturday in the weekly plan", async () => {
+  it("changes the target plan of a Saturday activation", async () => {
     editor._month = "2026-10-01";
     const tabs = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab");
     tabs[1].click();
     await settle();
-    const select = editor.shadowRoot!.querySelector<HTMLSelectElement>('select[data-day="sat"]')!;
+    const select = editor.shadowRoot!.querySelectorAll(".activation")[5].querySelectorAll<HTMLSelectElement>("select")[1];
     select.value = "workday";
     select.dispatchEvent(new Event("change"));
     await settle();
-    expect(editor._draft.week.sat).toBe("workday");
+    expect(editor._draft.activations![5].profile).toBe("workday");
     expect(editor.shadowRoot!.querySelectorAll(".calendar .cell:not(.head):not(.empty)").length).toBe(
       31,
     );
@@ -245,7 +246,7 @@ describe("curve-scheduler-editor: saving", () => {
     add.click();
     await settle();
     expect(editor._draft.exceptions).toEqual([
-      { from: "2026-10-29", to: "2026-11-04", profile: "day_off", note: "Urlaub" },
+      { from: "2026-10-29", to: "2026-11-04", profile: "day_off", note: "Ausnahme" },
     ]);
   });
 });
@@ -267,4 +268,144 @@ it("uses configurable time/value labels and guides the point being moved", async
   pointer("pointerup", handle, curve.xFor(minute + 15), curve.yFor(point.v + 1));
   await settle();
   expect(curve.shadowRoot!.querySelectorAll(".guide")).toHaveLength(0);
+});
+
+describe("activation ordering and numeric plans", () => {
+  it("adds conditions, reorders with buttons and drag/drop, and restores order with undo", async () => {
+    editor.language = "en";
+    editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+    await settle();
+    const button = (text: string) => [...editor.shadowRoot!.querySelectorAll("button")].find(b => b.textContent?.trim() === text)!;
+    button("Add activation").click();
+    await settle();
+    expect(editor._draft.activations).toHaveLength(8);
+    const last = editor.shadowRoot!.querySelectorAll(".activation")[7];
+    const type = last.querySelector("select")!;
+    type.value = "holiday";
+    type.dispatchEvent(new Event("change"));
+    await settle();
+    const picker = editor.shadowRoot!.querySelector("ha-entity-picker")!;
+    picker.dispatchEvent(new CustomEvent("value-changed", { detail: { value: "calendar.holidays" } }));
+    await settle();
+    editor.shadowRoot!.querySelectorAll<HTMLButtonElement>('[aria-label="Move activation up"]')[7].click();
+    await settle();
+    expect(editor._draft.activations![6].source).toBe("calendar.holidays");
+    const entries = editor.shadowRoot!.querySelectorAll(".activation");
+    entries[6].dispatchEvent(new Event("dragstart"));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await settle();
+    const zone = editor.shadowRoot!.querySelector(".activation-drop-zone")!;
+    zone.dispatchEvent(new Event("dragover", { cancelable: true, bubbles: true }));
+    await settle();
+    expect(editor._draft.activations![6].source).toBe("calendar.holidays");
+    expect((entries[6] as HTMLElement).style.order).toBe("1");
+    expect(entries[6].isConnected).toBe(true);
+    zone.dispatchEvent(new Event("drop", { cancelable: true, bubbles: true }));
+    await settle();
+    expect(editor._draft.activations![0].source).toBe("calendar.holidays");
+    editor.undo();
+    await settle();
+    expect(editor._draft.activations![6].source).toBe("calendar.holidays");
+    expect(editor.shadowRoot!.textContent).toContain("First matching activation wins");
+  });
+
+  it("edits a numeric plan in the shared draft with undo and a single schedule save", async () => {
+    const data = instance();
+    data.config.axis = { source: "sensor", input_entity: "sensor.outside", min: -20, max: 40, step: 1, wrap: false };
+    for (const profile of Object.values(data.schedule.profiles)) profile.curve = [{ x: -20, v: 40 }, { x: 40, v: 60 }];
+    editor.data = data;
+    await settle();
+    const numeric = editor.shadowRoot!.querySelector<NumericEditor>("curve-scheduler-numeric-editor")!;
+    await numeric.updateComplete;
+    const input = numeric.shadowRoot!.querySelectorAll("input")[1];
+    input.value = "50";
+    input.dispatchEvent(new Event("change"));
+    await numeric.updateComplete;
+    await settle();
+    expect(editor._draft.profiles.workday.curve![0].v).toBe(50);
+    expect(editor._draft.profiles.day_off.curve![0].v).toBe(40);
+    expect(editor.dirty).toBe(true);
+    expect(callWS).not.toHaveBeenCalled();
+    editor.undo();
+    await settle();
+    expect(editor._draft.profiles.workday.curve![0].v).toBe(40);
+    editor.redo();
+    callWS.mockResolvedValue({ ok: true, revision: 4 });
+    await editor.save();
+    expect(callWS.mock.calls[0][0].schedule.profiles.workday.curve[0].v).toBe(50);
+    expect(editor.dirty).toBe(false);
+  });
+});
+
+
+it("cancels an activation drag without changing the draft or undo history", async () => {
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  const original = JSON.stringify(editor._draft);
+  const source = editor.shadowRoot!.querySelectorAll(".activation")[2];
+  source.dispatchEvent(new Event("dragstart"));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await settle();
+  editor.shadowRoot!.querySelector(".activation-drop-zone")!.dispatchEvent(new Event("dragover", { cancelable: true }));
+  await settle();
+  expect((source as HTMLElement).style.order).toBe("1");
+  expect(editor.shadowRoot!.querySelectorAll(".activation")[2]).toBe(source);
+  source.dispatchEvent(new Event("dragend"));
+  await settle();
+  expect(editor.shadowRoot!.querySelector(".activation")!.getAttribute("data-index")).toBe("0");
+  expect(JSON.stringify(editor._draft)).toBe(original);
+  expect(editor._undo).toHaveLength(0);
+});
+
+it("animates button reordering and respects reduced motion", async () => {
+  editor.language = "en";
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  const animate = vi.fn();
+  const elements = [...editor.shadowRoot!.querySelectorAll<HTMLElement>(".activation")];
+  for (const el of elements) {
+    el.animate = animate;
+    el.getBoundingClientRect = () => ({ top: Number(el.dataset.index) * 200 } as DOMRect);
+  }
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>('[aria-label="Move activation down"]')[0].click();
+  await settle();
+  expect(animate).toHaveBeenCalledTimes(2);
+  expect(animate.mock.calls[0][1].duration).toBe(220);
+  animate.mockClear();
+  const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true } as MediaQueryList);
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>('[aria-label="Move activation down"]')[0].click();
+  await settle();
+  expect(animate).not.toHaveBeenCalled();
+  matchMedia.mockRestore();
+});
+
+it("defers drag layout changes and cancels a pending start cleanly", async () => {
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  const source = editor.shadowRoot!.querySelectorAll(".activation")[1];
+  source.dispatchEvent(new Event("dragstart"));
+  await settle();
+  expect(editor.shadowRoot!.querySelector(".activation-list.dragging")).toBeNull();
+  source.dispatchEvent(new Event("dragend"));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await settle();
+  expect(editor.shadowRoot!.querySelector(".activation-list.dragging")).toBeNull();
+  expect(editor.shadowRoot!.querySelectorAll(".activation")[1]).toBe(source);
+  expect(editor.dirty).toBe(false);
+});
+
+it("selects several weekdays in one activation and saves them together", async () => {
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  const weekdays = editor.shadowRoot!.querySelectorAll<HTMLInputElement>(".activation input[type=checkbox]");
+  expect(weekdays[0].checked).toBe(true);
+  expect(weekdays[1].checked).toBe(false);
+  weekdays[1].checked = true;
+  weekdays[1].dispatchEvent(new Event("change"));
+  await settle();
+  expect(editor._draft.activations![0].days).toEqual(["mon", "tue"]);
+  expect(editor.shadowRoot!.querySelector(".weekday-select summary")!.textContent).toContain("Dienstag");
+  callWS.mockResolvedValue({ ok: true, revision: 4 });
+  await editor.save();
+  expect(callWS.mock.calls[0][0].schedule.activations[0].days).toEqual(["mon", "tue"]);
 });

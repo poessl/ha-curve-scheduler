@@ -16,6 +16,7 @@ from homeassistant.util import dt as dt_util
 import voluptuous as vol
 
 from .const import DOMAIN
+from .holidays import HolidayProvider
 from .model import ScheduleValidationError, validate_schedule
 from .runtime import CurveSchedulerRuntime, RevisionConflictError
 
@@ -169,7 +170,8 @@ async def ws_preview(
                 msg["id"], {"ok": False, "errors": [i.as_dict() for i in issues]}
             )
             return
-    await runtime.holidays.async_ensure(day - timedelta(days=2), day + timedelta(days=2))
+    for provider in [runtime.holidays, *runtime.activation_holidays.values()]:
+        await provider.async_ensure(day - timedelta(days=2), day + timedelta(days=2))
     curve = runtime.preview(day, schedule, msg["step_minutes"])
     connection.send_result(
         msg["id"], {"ok": True, "date": day.isoformat(), "mode": runtime.mode, "curve": curve}
@@ -182,6 +184,7 @@ async def ws_preview(
         vol.Required("entry_id"): str,
         vol.Required("start"): str,
         vol.Required("end"): str,
+        vol.Optional("source"): vol.Match(r"^(calendar|binary_sensor)\.[a-z0-9_]+$"),
     }
 )
 @websocket_api.async_response
@@ -198,8 +201,9 @@ async def ws_holidays(
     except ValueError:
         connection.send_error(msg["id"], "invalid_format", "Invalid date")
         return
-    days = await runtime.holidays.async_holidays(start, end)
+    provider = HolidayProvider(hass, msg["source"]) if "source" in msg else runtime.holidays
+    days = await provider.async_holidays(start, end)
     connection.send_result(
         msg["id"],
-        {"configured": runtime.holidays.configured, "holidays": [d.isoformat() for d in days]},
+        {"configured": provider.configured, "holidays": [d.isoformat() for d in days]},
     )

@@ -1,5 +1,5 @@
 /**
- * <curve-scheduler-curve>: SVG chart of one day with draggable points.
+ * <curve-scheduler-curve>: shared time/numeric chart with draggable points.
  *
  * Points are rendered as 44 px HTML handles on top of the SVG so they can be
  * dragged with touch in every direction (touch-action: none) while the rest of
@@ -18,8 +18,8 @@ import {
   type Mode,
   type Point,
 } from "./interpolation";
-import { MAX_POINTS, TIME_GRID_MINUTES, type SchedulePoint } from "./model";
-import { axisTicks, formatValue, niceTicks } from "./format";
+import { MAX_POINTS, TIME_GRID_MINUTES, type SchedulePoint, type NumericPoint, type AxisConfig } from "./model";
+import { axisTicks, formatNumber, formatValue, niceTicks } from "./format";
 
 const PAD_LEFT = 44;
 const PAD_RIGHT = 10;
@@ -39,18 +39,22 @@ export interface CurveNoticeDetail {
   params: Record<string, unknown>;
 }
 
+type ChartPoint = SchedulePoint | NumericPoint;
+
 interface DragState {
   index: number;
   pointerId: number;
   startX: number;
   startY: number;
   moved: boolean;
-  points: SchedulePoint[];
+  points: ChartPoint[];
 }
 
 export class CurveSchedulerCurve extends LitElement {
   static properties = {
     points: { attribute: false },
+    numericPoints: { attribute: false },
+    axis: { attribute: false },
     context: { attribute: false },
     mode: {},
     min: { type: Number },
@@ -72,8 +76,10 @@ export class CurveSchedulerCurve extends LitElement {
     _drag: { state: true },
   };
 
-  /** Points of the day being shown/edited. */
+  /** Time plans retain their serialized HH:MM points; numeric plans use numericPoints + axis. */
   declare points: SchedulePoint[];
+  declare numericPoints: NumericPoint[];
+  declare axis: AxisConfig | null;
   /** Points of [day-2, day-1, day+1, day+2]; null repeats the edited day. */
   declare context: Point[][] | null;
   declare mode: Mode;
@@ -100,6 +106,8 @@ export class CurveSchedulerCurve extends LitElement {
   constructor() {
     super();
     this.points = [];
+    this.numericPoints = [];
+    this.axis = null;
     this.context = null;
     this.mode = "curve";
     this.min = 20;
@@ -140,7 +148,7 @@ export class CurveSchedulerCurve extends LitElement {
   }
 
   protected willUpdate(changed: PropertyValues<this>): void {
-    if (changed.has("points") && this._drag && !this.editable) {
+    if ((changed.has("points") || changed.has("numericPoints") || changed.has("axis")) && this._drag && !this.editable) {
       this._drag = null;
     }
   }
@@ -148,7 +156,22 @@ export class CurveSchedulerCurve extends LitElement {
   // ------------------------------------------------------------------
   // Geometry
 
+  private get domainStart(): number { return this.axis?.min ?? 0; }
+
+  private get sourcePoints(): ChartPoint[] { return this.axis ? this.numericPoints : this.points; }
+
+  private xOf(point: ChartPoint): number { return "x" in point ? point.x : parseTime(point.t); }
+
+  private formatX(x: number): string {
+    return this.axis ? formatNumber(x, this.xLabelStep || this.axis.step, this.language) : formatTime(x);
+  }
+
+  private pointAt(x: number, v: number): ChartPoint {
+    return this.axis ? { x, v } : { t: formatTime(x), v };
+  }
+
   private get domainEnd(): number {
+    if (this.axis) return this.axis.max;
     return this.showContinuation ? MINUTES_PER_DAY + CONTINUATION : MINUTES_PER_DAY;
   }
 
@@ -161,7 +184,7 @@ export class CurveSchedulerCurve extends LitElement {
   }
 
   xFor(minute: number): number {
-    return PAD_LEFT + (minute / this.domainEnd) * this.plotWidth;
+    return PAD_LEFT + ((minute - this.domainStart) / (this.domainEnd - this.domainStart)) * this.plotWidth;
   }
 
   yFor(value: number): number {
@@ -170,7 +193,7 @@ export class CurveSchedulerCurve extends LitElement {
   }
 
   minuteAt(x: number): number {
-    return ((x - PAD_LEFT) / this.plotWidth) * this.domainEnd;
+    return this.domainStart + ((x - PAD_LEFT) / this.plotWidth) * (this.domainEnd - this.domainStart);
   }
 
   valueAt(y: number): number {
@@ -179,15 +202,20 @@ export class CurveSchedulerCurve extends LitElement {
   }
 
   /** Points currently displayed (live while dragging). */
-  get shownPoints(): SchedulePoint[] {
-    return this._drag?.points ?? this.points;
+  get shownPoints(): ChartPoint[] {
+    return this._drag?.points ?? this.sourcePoints;
   }
 
-  private timeline(points: SchedulePoint[]): Point[] | null {
+  private timeline(points: ChartPoint[]): Point[] | null {
     if (points.length === 0) {
       return null;
     }
-    const center: Point[] = points.map((p) => [parseTime(p.t), p.v]);
+    const center: Point[] = points.map((p) => [this.xOf(p), p.v]);
+    if (this.axis) {
+      if (!this.axis.wrap) return center;
+      const width = this.axis.max - this.axis.min;
+      return [-2, -1, 0, 1, 2].flatMap(n => center.map(([x, v]) => [x + n * width, v] as Point));
+    }
     const ctx = this.context;
     const days = ctx ? [ctx[0], ctx[1], center, ctx[2], ctx[3]] : [center, center, center, center, center];
     return buildTimeline(days);
@@ -203,6 +231,7 @@ export class CurveSchedulerCurve extends LitElement {
   // Snapping and limits
 
   private snapTime(minute: number): number {
+    if (this.axis) return this.axis.min + roundToStep(minute - this.axis.min, this.axis.step);
     const grid = Math.max(TIME_GRID_MINUTES, this.snapMinutes || TIME_GRID_MINUTES);
     return Math.round(minute / grid) * grid;
   }
@@ -212,37 +241,39 @@ export class CurveSchedulerCurve extends LitElement {
   }
 
   /** Time limits for point ``index`` so it cannot pass its neighbours. */
-  private timeLimits(points: SchedulePoint[], index: number): [number, number] {
-    const low = index > 0 ? parseTime(points[index - 1].t) + TIME_GRID_MINUTES : 0;
+  private timeLimits(points: ChartPoint[], index: number): [number, number] {
+    const step = this.axis?.step ?? TIME_GRID_MINUTES;
+    const low = index > 0 ? this.xOf(points[index - 1]) + step : this.domainStart;
     const high =
       index < points.length - 1
-        ? parseTime(points[index + 1].t) - TIME_GRID_MINUTES
-        : MINUTES_PER_DAY - TIME_GRID_MINUTES;
+        ? this.xOf(points[index + 1]) - step
+        : this.axis ? this.axis.max - (this.axis.wrap ? step : 0) : MINUTES_PER_DAY - TIME_GRID_MINUTES;
     return [low, high];
   }
 
   /** Move point ``index`` to (minute, value) honouring snapping and neighbours. */
-  movePoint(
-    points: SchedulePoint[],
+  movePoint<T extends ChartPoint>(
+    points: T[],
     index: number,
     minute: number,
     value: number,
-  ): SchedulePoint[] {
+  ): T[] {
     const [low, high] = this.timeLimits(points, index);
+    if (low > high) return points;
     const t = clamp(this.snapTime(minute), low, high);
     // Clamp may land between grid steps when neighbours are close: keep 5 min grid.
     const gridT = clamp(Math.round(t / TIME_GRID_MINUTES) * TIME_GRID_MINUTES, low, high);
     const next = points.map((p) => ({ ...p }));
-    next[index] = { t: formatTime(gridT), v: this.snapValue(value) };
+    next[index] = this.pointAt(this.axis ? t : gridT, this.snapValue(value)) as T;
     return next;
   }
 
   // ------------------------------------------------------------------
   // Events
 
-  private emitChange(points: SchedulePoint[], selected: number | null): void {
+  private emitChange(points: ChartPoint[], selected: number | null): void {
     this.dispatchEvent(
-      new CustomEvent<PointsChangedDetail>("points-changed", {
+      new CustomEvent(this.axis ? "numeric-points-changed" : "points-changed", {
         detail: { points, selected },
         bubbles: true,
         composed: true,
@@ -277,27 +308,27 @@ export class CurveSchedulerCurve extends LitElement {
       return;
     }
     const minute = this.snapTime(this.minuteAt(x));
-    if (minute < 0 || minute >= MINUTES_PER_DAY) {
+    if (minute < this.domainStart || (this.axis && !this.axis.wrap ? minute > this.domainEnd : minute >= (this.axis?.max ?? MINUTES_PER_DAY))) {
       return;
     }
-    const existing = this.points.findIndex((p) => parseTime(p.t) === minute);
+    const existing = this.sourcePoints.findIndex((p) => this.xOf(p) === minute);
     if (existing >= 0) {
       this.emitSelect(existing);
-      this.emitNotice({ key: "point.taken", params: { time: formatTime(minute) } });
+      this.emitNotice({ key: "point.taken", params: { time: this.formatX(minute) } });
       return;
     }
-    if (this.points.length >= MAX_POINTS) {
+    if (this.sourcePoints.length >= MAX_POINTS) {
       this.emitNotice({ key: "point.full", params: { max: MAX_POINTS } });
       return;
     }
     const curve = this.curveValue(minute);
     const value = this.snapValue(curve ?? (this.min + this.max) / 2);
-    const points = this.points.map((p) => ({ ...p }));
-    let index = points.findIndex((p) => parseTime(p.t) > minute);
+    const points = this.sourcePoints.map((p) => ({ ...p }));
+    let index = points.findIndex((p) => this.xOf(p) > minute);
     if (index < 0) {
       index = points.length;
     }
-    points.splice(index, 0, { t: formatTime(minute), v: value });
+    points.splice(index, 0, this.pointAt(minute, value));
     this.emitChange(points, index);
   }
 
@@ -344,7 +375,7 @@ export class CurveSchedulerCurve extends LitElement {
       startX: x,
       startY: y,
       moved: false,
-      points: this.points.map((p) => ({ ...p })),
+      points: this.sourcePoints.map((p) => ({ ...p })),
     };
     this.emitSelect(index);
   }
@@ -359,7 +390,7 @@ export class CurveSchedulerCurve extends LitElement {
     if (!drag.moved && Math.hypot(x - drag.startX, y - drag.startY) < 3) {
       return;
     }
-    const points = this.movePoint(this.points, drag.index, this.minuteAt(x), this.valueAt(y));
+    const points = this.movePoint(this.sourcePoints, drag.index, this.minuteAt(x), this.valueAt(y));
     this._drag = { ...drag, moved: true, points };
   }
 
@@ -370,7 +401,7 @@ export class CurveSchedulerCurve extends LitElement {
     }
     this._drag = null;
     const changed = drag.points.some(
-      (p, i) => p.t !== this.points[i].t || p.v !== this.points[i].v,
+      (p, i) => this.xOf(p) !== this.xOf(this.sourcePoints[i]) || p.v !== this.sourcePoints[i].v,
     );
     if (drag.moved && changed) {
       this.emitChange(drag.points, drag.index);
@@ -385,10 +416,10 @@ export class CurveSchedulerCurve extends LitElement {
     if (!this.editable) {
       return;
     }
-    const point = this.points[index];
-    let minute = parseTime(point.t);
+    const point = this.sourcePoints[index];
+    let minute = this.xOf(point);
     let value = point.v;
-    const grid = Math.max(TIME_GRID_MINUTES, this.snapMinutes);
+    const grid = this.axis?.step ?? Math.max(TIME_GRID_MINUTES, this.snapMinutes);
     switch (event.key) {
       case "ArrowLeft":
         minute -= grid;
@@ -406,13 +437,13 @@ export class CurveSchedulerCurve extends LitElement {
         return;
     }
     event.preventDefault();
-    this.emitChange(this.movePoint(this.points, index, minute, value), index);
+    this.emitChange(this.movePoint(this.sourcePoints, index, minute, value), index);
   }
 
   // ------------------------------------------------------------------
   // Rendering
 
-  private curvePath(points: SchedulePoint[], from: number, to: number): string {
+  private curvePath(points: ChartPoint[], from: number, to: number): string {
     const timeline = this.timeline(points);
     if (!timeline) {
       return "";
@@ -422,8 +453,9 @@ export class CurveSchedulerCurve extends LitElement {
     const stepMinutes = (to - from) / samples;
     const parts: string[] = [];
     let previous: number | null = null;
-    for (let i = 0; i <= samples; i++) {
-      const minute = from + i * stepMinutes;
+    const inputs = Array.from({ length: samples + 1 }, (_, i) => from + i * stepMinutes);
+    if (this.axis) inputs.push(...points.flatMap(p => [this.xOf(p) - (to - from) * 1e-9, this.xOf(p)]).filter(x => x >= from && x <= to));
+    for (const [i, minute] of [...new Set(inputs)].sort((a, b) => a - b).entries()) {
       const value = clamp(interpolator.at(minute), this.min, this.max);
       const x = this.xFor(minute).toFixed(1);
       const y = this.yFor(value).toFixed(1);
@@ -439,7 +471,7 @@ export class CurveSchedulerCurve extends LitElement {
   private renderGrid() {
     const ticks = this.yLabelStep > 0 ? axisTicks(this.min, this.max, this.yLabelStep) : niceTicks(this.min, this.max, this.height < 180 ? 3 : 5);
     const narrow = this._width < 420;
-    const minutes = this.xLabelStep > 0 ? axisTicks(0, MINUTES_PER_DAY, this.xLabelStep) : (narrow ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24]).map(hour => hour * 60);
+    const minutes = this.axis ? axisTicks(this.axis.min, this.axis.max, this.xLabelStep) : this.xLabelStep > 0 ? axisTicks(0, MINUTES_PER_DAY, this.xLabelStep) : (narrow ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24]).map(hour => hour * 60);
     const bottom = PAD_TOP + this.plotHeight;
     return svg`
       ${ticks.map(
@@ -457,10 +489,10 @@ export class CurveSchedulerCurve extends LitElement {
         (minute) => svg`
           <line class="grid" x1=${this.xFor(minute)} x2=${this.xFor(minute)}
             y1=${PAD_TOP} y2=${bottom}></line>
-          <text class="label x" x=${this.xFor(minute)} y=${bottom + 17}>${this.xLabelStep > 0 ? formatTime(minute) : minute / 60}</text>`,
+          <text class="label x" x=${this.xFor(minute)} y=${bottom + 17}>${this.axis ? this.formatX(minute) : this.xLabelStep > 0 ? formatTime(minute) : minute / 60}</text>`,
       )}
       ${
-        this.showContinuation
+        !this.axis && this.showContinuation
           ? svg`<rect class="next-day" x=${this.xFor(MINUTES_PER_DAY)} y=${PAD_TOP}
               width=${this.xFor(this.domainEnd) - this.xFor(MINUTES_PER_DAY)}
               height=${this.plotHeight}></rect>
@@ -486,14 +518,14 @@ export class CurveSchedulerCurve extends LitElement {
     `;
   }
 
-  private renderHandles(points: SchedulePoint[]) {
+  private renderHandles(points: ChartPoint[]) {
     const drag = this._drag;
     return points.map((point, index) => {
-      const minute = parseTime(point.t);
+      const minute = this.xOf(point);
       const x = this.xFor(minute);
       const y = this.yFor(clamp(point.v, this.min, this.max));
       const selected = index === this.selected;
-      const label = `${point.t} · ${formatValue(point.v, this.step, this.unit, this.language)}`;
+      const label = `${this.formatX(this.xOf(point))} · ${formatValue(point.v, this.step, this.unit, this.language)}`;
       return html`
         <div
           class="handle ${selected ? "selected" : ""} ${drag?.index === index ? "dragging" : ""}"
@@ -529,7 +561,7 @@ export class CurveSchedulerCurve extends LitElement {
       return nothing;
     }
     const point = drag.points[drag.index];
-    const x = clamp(this.xFor(parseTime(point.t)), 50, this._width - 50);
+    const x = clamp(this.xFor(this.xOf(point)), 50, this._width - 50);
     const y = this.yFor(point.v);
     const above = y > 48;
     return html`<div
@@ -537,14 +569,14 @@ export class CurveSchedulerCurve extends LitElement {
       style="left: ${x}px; top: ${above ? y - 40 : y + 26}px"
       role="status"
     >
-      ${point.t} · ${formatValue(point.v, this.step, this.unit, this.language)}
+      ${this.formatX(this.xOf(point))} · ${formatValue(point.v, this.step, this.unit, this.language)}
     </div>`;
   }
 
   protected render() {
     const points = this.shownPoints;
-    const solid = this.curvePath(points, 0, MINUTES_PER_DAY);
-    const dashed = this.showContinuation
+    const solid = this.curvePath(points, this.domainStart, this.axis?.max ?? MINUTES_PER_DAY);
+    const dashed = !this.axis && this.showContinuation
       ? this.curvePath(points, MINUTES_PER_DAY, this.domainEnd)
       : "";
     return html`
@@ -569,14 +601,14 @@ export class CurveSchedulerCurve extends LitElement {
             : nothing}
           ${this.renderNow()}
           ${this._drag ? svg`
-            <line class="guide" x1=${PAD_LEFT} x2=${this.xFor(parseTime(points[this._drag.index].t))} y1=${this.yFor(points[this._drag.index].v)} y2=${this.yFor(points[this._drag.index].v)}></line>
-            <line class="guide" x1=${this.xFor(parseTime(points[this._drag.index].t))} x2=${this.xFor(parseTime(points[this._drag.index].t))} y1=${this.yFor(points[this._drag.index].v)} y2=${PAD_TOP + this.plotHeight}></line>
+            <line class="guide" x1=${PAD_LEFT} x2=${this.xFor(this.xOf(points[this._drag.index]))} y1=${this.yFor(points[this._drag.index].v)} y2=${this.yFor(points[this._drag.index].v)}></line>
+            <line class="guide" x1=${this.xFor(this.xOf(points[this._drag.index]))} x2=${this.xFor(this.xOf(points[this._drag.index]))} y1=${this.yFor(points[this._drag.index].v)} y2=${PAD_TOP + this.plotHeight}></line>
           ` : nothing}
           ${this.editable
             ? nothing
             : points.map(
                 (p) =>
-                  svg`<circle class="marker" cx=${this.xFor(parseTime(p.t))}
+                  svg`<circle class="marker" cx=${this.xFor(this.xOf(p))}
                     cy=${this.yFor(clamp(p.v, this.min, this.max))} r="3"
                     style="fill: ${this.color}"></circle>`,
               )}
@@ -677,6 +709,7 @@ export class CurveSchedulerCurve extends LitElement {
       transform: scale(1.5);
       box-shadow: 0 0 0 4px rgba(127, 127, 127, 0.3);
     }
+    @media (prefers-reduced-motion: reduce) { .dot { transition: none; } }
     .handle.dragging .dot {
       transform: scale(1.7);
     }

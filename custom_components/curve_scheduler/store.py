@@ -32,6 +32,14 @@ class ScheduleStore(Store[dict[str, Any]]):
 
 def migrate_data(data: dict[str, Any]) -> dict[str, Any]:
     """Fill in keys that may be missing in older data (idempotent)."""
+    for activation in data.get("activations", []):
+        if (
+            isinstance(activation, dict)
+            and activation.get("type") == "weekday"
+            and "days" not in activation
+            and "day" in activation
+        ):
+            activation["days"] = [activation.pop("day")]
     data.setdefault("exceptions", [])
     data.setdefault("auto_cleanup", False)
     data.setdefault("enabled", True)

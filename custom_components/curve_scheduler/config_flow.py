@@ -42,7 +42,6 @@ from .const import (
     DEFAULT_STEP,
     DEFAULT_THRESHOLD,
     DOMAIN,
-    HOLIDAY_DOMAINS,
     INTERPOLATION_MODES,
     TARGET_DOMAINS,
 )
@@ -122,10 +121,6 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
             vol.Optional(
                 CONF_UNIT, description={"suggested_value": values.get(CONF_UNIT, "")}
             ): selector.TextSelector(),
-            vol.Optional(
-                CONF_HOLIDAY_SOURCE,
-                description={"suggested_value": values.get(CONF_HOLIDAY_SOURCE)},
-            ): selector.EntitySelector(selector.EntitySelectorConfig(domain=HOLIDAY_DOMAINS)),
             vol.Required(
                 CONF_THRESHOLD, default=values.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
             ): _number(0, 1000),

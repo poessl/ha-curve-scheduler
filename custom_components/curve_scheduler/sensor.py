@@ -26,7 +26,7 @@ async def async_setup_entry(
     async_add_entities(
         [
             SetpointSensor(runtime),
-            *([ProfileSensor(runtime)] if runtime.axis["source"] == "time_of_day" else []),
+            ProfileSensor(runtime),
         ]
     )
 
@@ -61,12 +61,6 @@ class SetpointSensor(CurveSchedulerEntity, SensorEntity):
         current = self.runtime.current
         if current is None:
             return {}
-        if self.runtime.axis["source"] != "time_of_day":
-            return {
-                "input_value": self.runtime.state_dict()["input_value"],
-                "raw_value": current.raw,
-                "enabled": self.runtime.enabled,
-            }
         profile = self.runtime.data["profiles"].get(current.profile_id, {})
         in_one_hour = self.runtime.state_dict()["value_in_1h"]
         return {

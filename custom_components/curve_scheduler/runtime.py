@@ -114,6 +114,8 @@ class CurveSchedulerRuntime:
         self.store = store
         self.data: dict[str, Any] = {}
         self.holidays = HolidayProvider(hass, self.holiday_source)
+        self.activation_holidays: dict[str, HolidayProvider] = {}
+        self._activation_unsub: CALLBACK_TYPE | None = None
         self.current: ComputedValue | None = None
         self.last_written: float | None = None
         self._listeners: list[Callable[[], None]] = []
@@ -236,6 +238,25 @@ class CurveSchedulerRuntime:
         if self.axis["source"] != "time_of_day" and "curve" not in self.data:
             self.data["curve"] = default_curve(self.axis, self.minimum, self.maximum)
             await self.store.async_save(self.data)
+        if "activations" not in self.data:
+            self.data["activations"] = [
+                {"type": "weekday", "days": [day], "profile": profile}
+                for day, profile in self.data["week"].items()
+            ]
+            if self.holiday_source:
+                self.data["activations"].insert(
+                    0,
+                    {
+                        "type": "holiday",
+                        "source": self.holiday_source,
+                        "profile": self.data["holiday_profile"],
+                    },
+                )
+        if self.axis["source"] != "time_of_day":
+            for profile in self.data["profiles"].values():
+                profile.setdefault("curve", copy.deepcopy(self.data["curve"]))
+        await self.store.async_save(self.data)
+        self._sync_activation_sources()
         issues = validate_schedule(self.data, -math.inf, math.inf, self.axis)
         if issues:
             _LOGGER.warning(
@@ -243,6 +264,26 @@ class CurveSchedulerRuntime:
                 self.entry.title,
                 ", ".join(f"{i.path}: {i.code}" for i in issues),
             )
+
+    def _sync_activation_sources(self) -> None:
+        sources = {a["source"] for a in self.data.get("activations", []) if a["type"] == "holiday"}
+        self.activation_holidays = {
+            source: self.activation_holidays.get(source) or HolidayProvider(self.hass, source)
+            for source in sources
+        }
+        if self._activation_unsub:
+            self._activation_unsub()
+        self._activation_unsub = (
+            async_track_state_change_event(
+                self.hass, list(sources), self._async_holiday_source_changed
+            )
+            if sources
+            else None
+        )
+
+    def _is_holiday(self, day: date, source: str | None = None) -> bool:
+        provider = self.activation_holidays.get(source) if source else self.holidays
+        return provider.is_holiday(day) if provider else False
 
     async def async_start(self) -> None:
         """Set up listeners and timers."""
@@ -252,7 +293,7 @@ class CurveSchedulerRuntime:
             self._unsubs.append(
                 async_track_state_change_event(self.hass, [self.target], self._async_target_changed)
             )
-        if self.holiday_source:
+        if self.holiday_source and "activations" not in self.data:
             self._unsubs.append(
                 async_track_state_change_event(
                     self.hass, [self.holiday_source], self._async_holiday_source_changed
@@ -275,6 +316,9 @@ class CurveSchedulerRuntime:
     async def async_stop(self) -> None:
         """Remove listeners and timers."""
         self._stopped = True
+        if self._activation_unsub:
+            self._activation_unsub()
+            self._activation_unsub = None
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
@@ -324,6 +368,8 @@ class CurveSchedulerRuntime:
     @callback
     def _async_holiday_source_changed(self, _event: Event[EventStateChangedData]) -> None:
         self.holidays.clear()
+        for provider in self.activation_holidays.values():
+            provider.clear()
         self.hass.async_create_task(self.async_update(force=True))
 
     # ------------------------------------------------------------------
@@ -369,7 +415,7 @@ class CurveSchedulerRuntime:
         override = self.active_override(at)
         if override is not None:
             return DayProfile(override, REASON_OVERRIDE)
-        return resolve_day(self.data, day, self.holidays.is_holiday)
+        return resolve_day(self.data, day, self._is_holiday)
 
     def timeline_profiles(self, at: datetime) -> list[tuple[date, DayProfile]]:
         """Return the profiles of the five timeline days around ``at``."""
@@ -381,8 +427,14 @@ class CurveSchedulerRuntime:
         local = dt_util.as_local(at)
         if self.axis["source"] != "time_of_day":
             x = input_value(self.hass, local, self.axis)
+            resolved = self.day_profile(local.date(), local)
             raw = (
-                evaluate_curve(self.data["curve"], x, self.axis, self.mode)
+                evaluate_curve(
+                    self.data["profiles"][resolved.profile_id]["curve"],
+                    x,
+                    self.axis,
+                    self.mode,
+                )
                 if x is not None
                 else None
             )
@@ -395,7 +447,7 @@ class CurveSchedulerRuntime:
                 if raw is not None
                 else None
             )
-            return ComputedValue(raw, value, "", "input", None, None, x)
+            return ComputedValue(raw, value, resolved.profile_id, resolved.reason, None, None, x)
         days = self.timeline_profiles(local)
         timeline = build_timeline(
             [profile_points(self.data["profiles"][dp.profile_id]) for _, dp in days]
@@ -422,19 +474,29 @@ class CurveSchedulerRuntime:
     ) -> list[list[float]]:
         """Return the curve of ``day`` as ``[minute, value]`` pairs."""
         data = self.data if schedule is None else {**self.data, **schedule}
+        override = self.active_override(dt_util.now())
         if self.axis["source"] != "time_of_day":
             width = self.axis["max"] - self.axis["min"]
             return [
-                [x, evaluate_curve(data["curve"], x, self.axis, self.mode)]
+                [
+                    x,
+                    evaluate_curve(
+                        data["profiles"][
+                            override or resolve_day(data, day, self._is_holiday).profile_id
+                        ]["curve"],
+                        x,
+                        self.axis,
+                        self.mode,
+                    ),
+                ]
                 for x in (self.axis["min"] + width * i / 288 for i in range(289))
             ]
-        override = self.active_override(dt_util.now())
         profiles = []
         for current_day in timeline_days(day):
             if override is not None and override in data["profiles"]:
                 profile_id = override
             else:
-                profile_id = resolve_day(data, current_day, self.holidays.is_holiday).profile_id
+                profile_id = resolve_day(data, current_day, self._is_holiday).profile_id
             profiles.append(profile_points(data["profiles"][profile_id]))
         timeline = build_timeline(profiles)
         return [
@@ -475,10 +537,10 @@ class CurveSchedulerRuntime:
             return
         now = dt_util.now()
         await self._async_expire_override(now)
-        if self.axis["source"] == "time_of_day":
-            if self.holidays.configured and self.holidays.is_stale(now):
-                self.holidays.clear()
-            await self.holidays.async_ensure(
+        for provider in [self.holidays, *self.activation_holidays.values()]:
+            if provider.is_stale(now):
+                provider.clear()
+            await provider.async_ensure(
                 now.date() - timedelta(days=2), now.date() + timedelta(days=3)
             )
         computed = self._compute(now)
@@ -533,6 +595,7 @@ class CurveSchedulerRuntime:
         if issues:
             raise ScheduleValidationError(issues)
         self.data.update(normalize_schedule(schedule))
+        self._sync_activation_sources()
         self.data["revision"] = self.revision + 1
         override = self.data.get("override")
         if override and override.get("profile") not in self.data["profiles"]:

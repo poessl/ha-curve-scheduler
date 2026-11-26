@@ -14,8 +14,8 @@ pump speed, brightness …
 
 The curve is defined by a few **points** (time → value). Values in between
 are interpolated, smoothly and without a jump at midnight. Each day uses a
-**daily plan** (e.g. *Workday*, *Day off*, *Holiday*), chosen by the weekly
-plan, a holiday calendar or date-range exceptions.
+**plan** (e.g. *Workday*, *Day off*, *Holiday*), chosen by ordered activation
+conditions or date-range exceptions. Plans are available for time, month and sensor inputs.
 
 **Everyone can edit the plans directly from a dashboard card**, on the phone
 or the desktop, without YAML, automations, developer tools or admin rights.
@@ -27,9 +27,10 @@ or the desktop, without YAML, automations, developer tools or admin rights.
 
 ## Features
 
-- Visual curve editor: drag points with mouse or finger, or type the values into fields
+- Shared curve editor for time, month and sensor inputs: drag points with mouse or finger, or type the values into fields
+- Numeric axes can clamp at their limits or wrap periodically, including sensor inputs
 - Four kinds of transition: step, linear, smooth and curve (monotone cubic, never overshoots)
-- Weekly plan, holiday plan (Workday sensor or any calendar), date-range exceptions such as holidays
+- Ordered activations by weekday or holiday calendar/Workday sensor, with date-range exceptions
 - Manual mode ("use the *Day off* plan until tomorrow") through the card, a select entity or an action
 - Undo/redo, *Save*/*Discard* and a warning about unsaved changes
 - Several cards can be open at the same time; changes appear everywhere, and conflicting saves are detected
@@ -72,7 +73,6 @@ automatically. You do **not** have to add a dashboard resource.
 | Y-axis label interval | 0 = automatic; otherwise output units | 0 |
 | Rounding step | value is rounded before writing | 0.5 |
 | Unit | shown in the card | taken from the target |
-| Holiday source | optional: Workday binary sensor **or** a calendar (each event = day off) | – |
 | Write threshold | only write when the value changed by at least this much | 0 |
 
 All settings can be changed later under **Configure**. You can add as many
@@ -81,7 +81,7 @@ instances as you like (e.g. circulation and buffer tank). Two example plans,
 
 > **Workday sensor:** the Workday integration also reports weekends as
 > "not a workday". If Saturday and Sunday should use their own plans from the
-> weekly plan, set up the Workday sensor with all seven days as workdays, so
+> activation entries, put the weekday entries first or set up the Workday sensor with all seven days as workdays, so
 > it only reports public holidays.
 
 ### Open the editor without a dashboard card
@@ -127,13 +127,13 @@ The chart shows today's curve. The red line marks the current time. The text
 line summarizes the day, e.g.
 *Today: Workday · now 58 °C · from 22:00 → 45 °C*.
 
-- **Mode:** *Automatic* follows the weekly plan. Choosing a plan uses it until you switch back to *Automatic*.
-- **Add holiday:** enter a date range and the plan to use during that time.
+- **Mode:** *Automatic* follows the ordered activations. Choosing a plan uses it until you switch back to *Automatic*.
+- **Add exception:** enter a date range and the plan to use during that time.
 - **Edit** opens the editor.
 
 <br clear="right">
 
-### Daily plans
+### Plans
 
 <p>
   <img src="docs/images/editor-profiles.png" width="420" alt="Daily plan editor">
@@ -141,7 +141,7 @@ line summarizes the day, e.g.
 </p>
 
 - Choose the plan at the top. **+ New plan**, rename, pick a color, **Duplicate** or **Delete plan**.
-  A plan that is still used on a weekday, on holidays or by an exception cannot be deleted; the card says where it is used.
+  A plan that is still used by an activation or an exception cannot be deleted; the card says where it is used.
 - **Drag a point** to change time and value. Points snap to 15 minutes (adjustable) and the rounding step, and cannot pass their neighbors. A label shows time and value while dragging.
 - **Tap the line** to add a point there.
 - **Tap a point** to select it. Below the chart you can type the time and value, use − / +, or delete it.
@@ -149,14 +149,22 @@ line summarizes the day, e.g.
 - The dashed end of the curve shows how it continues into the next day.
 - **Copy curve from** copies all points from another plan.
 
-### Weekly plan
+### Activations
 
-<img src="docs/images/editor-week.png" width="420" alt="Weekly plan">
+Add an activation entry, choose its condition and target plan, then configure:
 
-Choose a plan for each weekday and for holidays. The month overview shows
-which plan applies on which day, holidays (★) and exceptions (✈) included.
+- **Day of the week:** check one or more weekdays in the dropdown. The entry matches any selected day.
+- **Holiday calendar:** choose a calendar or Workday binary sensor here, rather than in the main configuration. Any calendar event marks a day off; a Workday sensor matches when it is `off`.
 
-### Holidays & exceptions
+The **first matching entry wins**. Reorder entries using ↑/↓ or drag and drop.
+If nothing matches, the first plan applies. The month overview shows the resulting
+plans, with holidays (★) and date exceptions (✈).
+
+Existing weekday assignments and holiday settings migrate automatically, with the
+holiday activation first to preserve its former priority. Existing numeric curves
+are copied into each plan so migration preserves the current output.
+
+### Exceptions
 
 <img src="docs/images/editor-exceptions.png" width="420" alt="Exceptions">
 
@@ -176,7 +184,7 @@ After saving, the new value is written immediately.
 - A plan describes a day from 00:00 to 24:00. **Across midnight** the curve
   runs towards the first point of the **next day's plan**, so switching from
   workday to weekend does not cause a jump (except in *step* mode).
-- Priority for a day: **manual mode > exception > holiday > weekday**.
+- Priority for a day: **manual mode > date exception > first matching activation > first plan**.
 - *Curve* uses monotone cubic interpolation (PCHIP, Fritsch–Carlson). It goes
   through every point, never overshoots and has no kinks. *Smooth* uses
   smoothstep between two points.

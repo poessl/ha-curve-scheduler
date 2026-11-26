@@ -17,7 +17,7 @@ async function mount(options: { empty?: boolean; numeric?: boolean; failure?: bo
   const data = instance();
   if (options.numeric) {
     data.config.axis = { source: "sensor", input_entity: "input_number.example", min: 0, max: 100, step: 1, wrap: false };
-    data.schedule.curve = [{ x: 0, v: 20 }, { x: 100, v: 70 }];
+    for (const profile of Object.values(data.schedule.profiles)) profile.curve = [{ x: 0, v: 20 }, { x: 100, v: 70 }];
   }
   const hass = {
     callWS: options.failure ? vi.fn().mockRejectedValue(new Error("Offline")) : vi.fn().mockResolvedValue(options.empty ? [] : [{ entry_id: "a", title: "First" }, { entry_id: "b", title: "Second" }]),
@@ -53,7 +53,7 @@ describe("standalone editor panel", () => {
     window.history.replaceState({}, "", "/curve-scheduler?entry_id=b");
     const { panel } = await mount({ numeric: true });
     expect(card(panel)._config.entry_id).toBe("b");
-    const editor = card(panel).shadowRoot!.querySelector<NumericEditor>("curve-scheduler-numeric-editor")!;
+    const editor = card(panel).shadowRoot!.querySelector("curve-scheduler-editor")!.shadowRoot!.querySelector<NumericEditor>("curve-scheduler-numeric-editor")!;
     expect(editor.editing).toBe(true);
     expect(editor.shadowRoot!.querySelectorAll("input")).toHaveLength(4);
   });

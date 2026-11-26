@@ -31,7 +31,10 @@ export interface SchedulePoint {
   v: number;
 }
 
+export interface Activation { type: "weekday" | "holiday"; profile: string; days?: Weekday[]; day?: Weekday; source?: string; }
+
 export interface Profile {
+  curve?: NumericPoint[];
   name: string;
   color: string;
   points: SchedulePoint[];
@@ -49,6 +52,7 @@ export interface NumericPoint { x: number; v: number; }
 export interface AxisConfig { source: "time_of_day" | "month_of_year" | "sensor"; input_entity: string | null; min: number; max: number; step: number; wrap: boolean; }
 
 export interface Schedule {
+  activations?: Activation[];
   curve?: NumericPoint[];
   profiles: Record<string, Profile>;
   week: Record<Weekday, string>;
@@ -171,7 +175,7 @@ export function validatePoints(
   return issues;
 }
 
-export function validateSchedule(data: Schedule, min: number, max: number): ValidationIssue[] {
+export function validateSchedule(data: Schedule, min: number, max: number, axis?: AxisConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const add = (code: string, path: string, params: Record<string, unknown> = {}) =>
     issues.push({ code, path, params });
@@ -207,17 +211,27 @@ export function validateSchedule(data: Schedule, min: number, max: number): Vali
     if (typeof profile.color !== "string" || !COLOR_RE.test(profile.color)) {
       add("invalid_color", `${path}.color`);
     }
-    issues.push(...validatePoints(profile.points ?? [], `${path}.points`, min, max));
+    if (axis && axis.source !== "time_of_day") {
+      const points = profile.curve;
+      if (!points || points.length < 1 || points.length > MAX_POINTS || points.some((p, i) => !Number.isFinite(p.x) || !Number.isFinite(p.v) || p.x < axis.min || p.x > axis.max || (axis.wrap && p.x === axis.max) || (i > 0 && p.x <= points[i - 1].x) || p.v < min || p.v > max)) add("invalid_curve", `${path}.curve`);
+    } else issues.push(...validatePoints(profile.points ?? [], `${path}.points`, min, max));
   }
   const checkReference = (value: unknown, path: string) => {
     if (typeof value !== "string" || !(value in profiles)) {
       add("unknown_profile", path, { profile: String(value) });
     }
   };
-  for (const day of WEEKDAYS) {
-    checkReference(data.week?.[day], `week.${day}`);
+  if (data.activations) {
+    if (data.activations.length > MAX_EXCEPTIONS) add("invalid_format", "activations");
+    data.activations.forEach((a, i) => {
+      checkReference(a.profile, `activations.${i}.profile`);
+      const days = a.days ?? [a.day!];
+      if (a.type === "weekday" ? !Array.isArray(days) || !days.length || days.some(day => !WEEKDAYS.includes(day)) || new Set(days).size !== days.length : a.type !== "holiday" || !/^(calendar|binary_sensor)\.[a-z0-9_]+$/.test(a.source ?? "")) add("invalid_format", `activations.${i}`);
+    });
+  } else {
+    for (const day of WEEKDAYS) checkReference(data.week?.[day], `week.${day}`);
+    checkReference(data.holiday_profile, "holiday_profile");
   }
-  checkReference(data.holiday_profile, "holiday_profile");
   const exceptions = data.exceptions ?? [];
   if (exceptions.length > MAX_EXCEPTIONS) {
     add("too_many_exceptions", "exceptions", { max: MAX_EXCEPTIONS });
@@ -245,10 +259,10 @@ export function validateSchedule(data: Schedule, min: number, max: number): Vali
 
 /** Where a profile is referenced (week day, holiday rule, exceptions). */
 export function profileUsages(data: Schedule, profileId: string): string[] {
-  const usages: string[] = WEEKDAYS.filter((day) => data.week[day] === profileId).map(
+  const usages: string[] = data.activations ? data.activations.flatMap((a, i) => a.profile === profileId ? [`activations.${i}`] : []) : WEEKDAYS.filter((day) => data.week[day] === profileId).map(
     (day) => `week.${day}`,
   );
-  if (data.holiday_profile === profileId) {
+  if (!data.activations && data.holiday_profile === profileId) {
     usages.push("holiday_profile");
   }
   data.exceptions.forEach((exception, index) => {
@@ -293,12 +307,19 @@ export function weekdayOf(value: string): Weekday {
 export function resolveDay(
   data: Schedule,
   day: string,
-  isHoliday: (day: string) => boolean,
+  isHoliday: (day: string, source?: string) => boolean,
 ): DayProfile {
   for (const exception of data.exceptions) {
     if (exception.from <= day && day <= exception.to) {
       return { profileId: exception.profile, reason: "exception" };
     }
+  }
+  if (data.activations) {
+    for (const a of data.activations) {
+      if (a.type === "weekday" && (a.days ?? [a.day]).includes(weekdayOf(day))) return { profileId: a.profile, reason: "weekday" };
+      if (a.type === "holiday" && isHoliday(day, a.source)) return { profileId: a.profile, reason: "holiday" };
+    }
+    return { profileId: Object.keys(data.profiles)[0], reason: "weekday" };
   }
   if (isHoliday(day)) {
     return { profileId: data.holiday_profile, reason: "holiday" };

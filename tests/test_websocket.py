@@ -218,7 +218,8 @@ async def test_numeric_curve_round_trip(hass: HomeAssistant, entry: Any, client:
     hass.states.async_set("sensor.outdoor_temperature", "10")
     numeric = await setup_entry(hass, make_entry("", **SENSOR_OPTIONS))
     schedule = numeric.runtime_data.schedule_dict()
-    schedule["curve"] = [{"x": -20, "v": 70}, {"x": 40, "v": 20}]
+    for profile in schedule["profiles"].values():
+        profile["curve"] = [{"x": -20, "v": 70}, {"x": 40, "v": 20}]
     await client.send_json_auto_id(
         {
             "type": "curve_scheduler/save",
@@ -231,8 +232,8 @@ async def test_numeric_curve_round_trip(hass: HomeAssistant, entry: Any, client:
     await client.send_json_auto_id({"type": "curve_scheduler/get", "entry_id": numeric.entry_id})
     data = (await client.receive_json())["result"]
     assert data["state"]["value"] == 45
-    assert data["schedule"]["curve"] == schedule["curve"]
-    schedule["curve"] = [{"x": 1, "v": 30}, {"x": 1, "v": 40}]
+    assert data["schedule"]["profiles"] == schedule["profiles"]
+    schedule["profiles"]["workday"]["curve"] = [{"x": 1, "v": 30}, {"x": 1, "v": 40}]
     await client.send_json_auto_id(
         {
             "type": "curve_scheduler/preview",

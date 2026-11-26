@@ -41,7 +41,15 @@ DEFAULT_COLORS = ["#e67e22", "#27ae60", "#2980b9", "#8e44ad", "#c0392b", "#16a08
 
 # Fields of the schedule that the editor may change (everything except
 # runtime state such as ``enabled`` and ``override``).
-EDITABLE_KEYS = ("profiles", "week", "holiday_profile", "exceptions", "auto_cleanup", "curve")
+EDITABLE_KEYS = (
+    "profiles",
+    "week",
+    "holiday_profile",
+    "exceptions",
+    "auto_cleanup",
+    "curve",
+    "activations",
+)
 
 
 @dataclass(slots=True)
@@ -193,6 +201,47 @@ def _valid_date(value: Any) -> date | None:
         return None
 
 
+def validate_schedule_curve(
+    points: Any, axis: dict[str, Any] | None, minimum: float, maximum: float
+) -> list[ValidationIssue]:
+    """Validate the coordinates and values of a numeric plan."""
+    issues: list[ValidationIssue] = []
+
+    if not isinstance(points, list) or not MIN_POINTS <= len(points) <= MAX_POINTS:
+        _issue(issues, "invalid_curve", "curve")
+    else:
+        previous = -math.inf
+        for index, point in enumerate(points):
+            path = f"curve.{index}"
+            if not isinstance(point, Mapping):
+                _issue(issues, "invalid_curve", path)
+                continue
+            x, value = point.get("x"), point.get("v")
+            if (
+                isinstance(x, bool)
+                or not isinstance(x, (int, float))
+                or not math.isfinite(x)
+                or (
+                    axis
+                    and axis["source"] != "time_of_day"
+                    and (not axis["min"] <= x <= axis["max"] or (axis["wrap"] and x == axis["max"]))
+                )
+                or x <= previous
+            ):
+                _issue(issues, "invalid_x", path)
+            else:
+                previous = x
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or not minimum <= value <= maximum
+            ):
+                _issue(issues, "invalid_value", path)
+
+    return issues
+
+
 def validate_schedule(
     data: Any, minimum: float, maximum: float, axis: dict[str, Any] | None = None
 ) -> list[ValidationIssue]:
@@ -202,42 +251,8 @@ def validate_schedule(
         _issue(issues, "invalid_format", "")
         return issues
 
-    if "curve" in data or (axis and axis["source"] != "time_of_day"):
-        points = data.get("curve")
-        if not isinstance(points, list) or not MIN_POINTS <= len(points) <= MAX_POINTS:
-            _issue(issues, "invalid_curve", "curve")
-        else:
-            previous = -math.inf
-            for index, point in enumerate(points):
-                path = f"curve.{index}"
-                if not isinstance(point, Mapping):
-                    _issue(issues, "invalid_curve", path)
-                    continue
-                x, value = point.get("x"), point.get("v")
-                if (
-                    isinstance(x, bool)
-                    or not isinstance(x, (int, float))
-                    or not math.isfinite(x)
-                    or (
-                        axis
-                        and axis["source"] != "time_of_day"
-                        and (
-                            not axis["min"] <= x <= axis["max"]
-                            or (axis["wrap"] and x == axis["max"])
-                        )
-                    )
-                    or x <= previous
-                ):
-                    _issue(issues, "invalid_x", path)
-                else:
-                    previous = x
-                if (
-                    isinstance(value, bool)
-                    or not isinstance(value, (int, float))
-                    or not math.isfinite(value)
-                    or not minimum <= value <= maximum
-                ):
-                    _issue(issues, "invalid_value", path)
+    if "curve" in data and "activations" not in data:
+        issues.extend(validate_schedule_curve(data["curve"], axis, minimum, maximum))
 
     profiles = data.get("profiles")
     if not isinstance(profiles, Mapping) or not profiles:
@@ -269,7 +284,18 @@ def validate_schedule(
         color = profile.get("color")
         if not isinstance(color, str) or not COLOR_RE.match(color):
             _issue(issues, "invalid_color", f"{path}.color")
-        # Daily profiles are retained but inactive for a numeric input axis.
+        if (axis and axis["source"] != "time_of_day") or "curve" in profile:
+            numeric = axis is not None and axis["source"] != "time_of_day"
+            curve_issues = validate_schedule_curve(
+                profile.get("curve"),
+                axis if numeric else None,
+                minimum if numeric else -math.inf,
+                maximum if numeric else math.inf,
+            )
+            issues.extend(
+                ValidationIssue(i.code, f"{path}.{i.path}", i.params) for i in curve_issues
+            )
+        # Time points remain available when switching the input axis.
         numeric = axis is not None and axis["source"] != "time_of_day"
         _validate_points(
             profile.get("points"),
@@ -283,14 +309,46 @@ def validate_schedule(
         if not isinstance(value, str) or value not in profiles:
             _issue(issues, "unknown_profile", path, profile=str(value))
 
+    activations = data.get("activations")
+    if "activations" in data:
+        if not isinstance(activations, list) or len(activations) > MAX_EXCEPTIONS:
+            _issue(issues, "invalid_format", "activations")
+        else:
+            for index, activation in enumerate(activations):
+                path = f"activations.{index}"
+                if not isinstance(activation, Mapping):
+                    _issue(issues, "invalid_format", path)
+                    continue
+                check_reference(activation.get("profile"), f"{path}.profile")
+                if activation.get("type") == "weekday":
+                    days = activation.get("days", [activation.get("day")])
+                    if (
+                        not isinstance(days, list)
+                        or not days
+                        or any(day not in WEEKDAYS for day in days)
+                        or len(set(days)) != len(days)
+                    ):
+                        _issue(issues, "invalid_format", f"{path}.days")
+                elif activation.get("type") == "holiday":
+                    source = activation.get("source")
+                    if not isinstance(source, str) or not re.fullmatch(
+                        r"(?:calendar|binary_sensor)\.[a-z0-9_]+", source
+                    ):
+                        _issue(issues, "invalid_format", f"{path}.source")
+                else:
+                    _issue(issues, "invalid_format", f"{path}.type")
+
     week = data.get("week")
-    if not isinstance(week, Mapping):
+    if "activations" in data:
+        pass
+    elif not isinstance(week, Mapping):
         _issue(issues, "invalid_format", "week")
     else:
         for day in WEEKDAYS:
             check_reference(week.get(day), f"week.{day}")
 
-    check_reference(data.get("holiday_profile"), "holiday_profile")
+    if "activations" not in data:
+        check_reference(data.get("holiday_profile"), "holiday_profile")
 
     exceptions = data.get("exceptions")
     if not isinstance(exceptions, list):
@@ -325,6 +383,17 @@ def validate_schedule(
 
 def profile_usages(data: Mapping[str, Any], profile_id: str) -> list[str]:
     """Return where a profile is referenced (for delete protection)."""
+    if "activations" in data:
+        usages = []
+        for key in ("activations", "exceptions"):
+            entries = data.get(key)
+            if isinstance(entries, list):
+                usages.extend(
+                    f"{key}.{i}.profile"
+                    for i, entry in enumerate(entries)
+                    if isinstance(entry, Mapping) and entry.get("profile") == profile_id
+                )
+        return usages
     week = data.get("week")
     usages = []
     if isinstance(week, Mapping):
@@ -390,13 +459,18 @@ def normalize_schedule(data: Mapping[str, Any]) -> dict[str, Any]:
     return {
         **(
             {"curve": [{"x": float(p["x"]), "v": float(p["v"])} for p in data["curve"]]}
-            if "curve" in data
+            if "curve" in data and "activations" not in data
             else {}
         ),
         "profiles": {
             profile_id: {
                 "name": profile["name"].strip(),
                 "color": profile["color"].lower(),
+                **(
+                    {"curve": [dict(point) for point in profile["curve"]]}
+                    if "curve" in profile
+                    else {}
+                ),
                 "points": [
                     {"t": format_time(parse_time(p["t"])), "v": float(p["v"])}
                     for p in profile["points"]
@@ -404,8 +478,30 @@ def normalize_schedule(data: Mapping[str, Any]) -> dict[str, Any]:
             }
             for profile_id, profile in data["profiles"].items()
         },
-        "week": {day: data["week"][day] for day in WEEKDAYS},
-        "holiday_profile": data["holiday_profile"],
+        **(
+            {
+                "activations": [
+                    {
+                        "type": a["type"],
+                        "profile": a["profile"],
+                        **(
+                            {
+                                "days": [
+                                    day for day in WEEKDAYS if day in a.get("days", [a.get("day")])
+                                ]
+                            }
+                            if a["type"] == "weekday"
+                            else {"source": a["source"]}
+                        ),
+                    }
+                    for a in data["activations"]
+                ]
+            }
+            if "activations" in data
+            else {}
+        ),
+        "week": dict(data["week"]) if isinstance(data.get("week"), Mapping) else {},
+        "holiday_profile": data.get("holiday_profile", next(iter(data["profiles"]))),
         "exceptions": exceptions,
         "auto_cleanup": bool(data.get("auto_cleanup", False)),
     }
@@ -422,16 +518,26 @@ class DayProfile:
 def resolve_day(
     data: Mapping[str, Any],
     day: date,
-    is_holiday: Callable[[date], bool],
+    is_holiday: Callable[..., bool],
 ) -> DayProfile:
     """Resolve the automatic profile of a day (without manual override).
 
-    Priority: exception > holiday > weekday.
+    Priority: exception > first matching activation > first plan.
+    Legacy schedules retain holiday > weekday resolution.
     """
     iso = day.isoformat()
     for exception in data.get("exceptions", []):
         if exception["from"] <= iso <= exception["to"]:
             return DayProfile(exception["profile"], REASON_EXCEPTION)
+    if "activations" in data:
+        for activation in data["activations"]:
+            if activation["type"] == "weekday" and WEEKDAYS[day.weekday()] in activation.get(
+                "days", [activation.get("day")]
+            ):
+                return DayProfile(activation["profile"], REASON_WEEKDAY)
+            if activation["type"] == "holiday" and is_holiday(day, activation["source"]):
+                return DayProfile(activation["profile"], REASON_HOLIDAY)
+        return DayProfile(next(iter(data["profiles"])), REASON_WEEKDAY)
     if is_holiday(day):
         return DayProfile(data["holiday_profile"], REASON_HOLIDAY)
     return DayProfile(data["week"][WEEKDAYS[day.weekday()]], REASON_WEEKDAY)

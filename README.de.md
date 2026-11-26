@@ -10,7 +10,7 @@ Pufferspeicher, Raumtemperatur, Pumpendrehzahl, Helligkeit …
 Der Verlauf wird durch wenige **Punkte** (Uhrzeit → Wert) festgelegt. Die
 Werte dazwischen werden berechnet, weich und ohne Sprung um Mitternacht. Für
 jeden Tag gilt ein **Tagesplan** (z. B. *Werktag*, *Frei*, *Urlaub*). Welcher
-das ist, bestimmen der Wochenplan, ein Feiertagskalender oder Ausnahmen für
+das ist, bestimmen geordnete Aktivierungen oder Ausnahmen für
 einen Zeitraum.
 
 **Alle im Haushalt können die Pläne direkt in einer Dashboard-Karte
@@ -26,7 +26,7 @@ Entwicklerwerkzeuge oder Admin-Rechte.
 
 - Kurven-Editor: Punkte mit Maus oder Finger ziehen oder Werte in Felder tippen
 - Vier Übergänge: Stufe, linear, weich und Kurve (monoton kubisch, ohne Überschwingen)
-- Wochenplan, Feiertagsplan (Workday-Sensor oder beliebiger Kalender), Ausnahmen wie Urlaub
+- Geordnete Aktivierungen nach Wochentag oder Feiertagsquelle und manuelle Datumsausnahmen
 - Manueller Modus („bis morgen den Plan *Frei* verwenden“) über die Karte, eine Auswahl-Entity oder eine Aktion
 - Rückgängig/Wiederholen, *Speichern*/*Verwerfen* und Warnung bei ungespeicherten Änderungen
 - Mehrere Karten gleichzeitig offen: Änderungen erscheinen überall, gleichzeitiges Speichern wird erkannt
@@ -62,7 +62,6 @@ Eine Dashboard-Ressource muss **nicht** angelegt werden.
 | Minimum / Maximum | erlaubter Bereich, gleichzeitig die Achse im Diagramm | vom Ziel, sonst 20 / 70 |
 | Schrittweite | Rundung vor dem Schreiben | 0,5 |
 | Einheit | Anzeige in der Karte | vom Ziel |
-| Feiertagsquelle | optional: Workday-Binärsensor **oder** ein Kalender (jedes Ereignis = freier Tag) | – |
 | Schreib-Schwelle | nur schreiben, wenn sich der Wert um mindestens diesen Betrag ändert | 0 |
 
 Alle Einstellungen lassen sich später unter **Konfigurieren** ändern. Es sind
@@ -92,13 +91,13 @@ Das Diagramm zeigt den heutigen Verlauf, die rote Linie die aktuelle Uhrzeit.
 Darüber steht eine Zusammenfassung, z. B.
 *Heute: Werktag · jetzt 58 °C · ab 22:00 → 45 °C*.
 
-- **Modus:** *Automatik* folgt dem Wochenplan. Wird ein Plan gewählt, gilt er, bis wieder *Automatik* gewählt wird.
+- **Modus:** *Automatik* folgt den geordneten Aktivierungen. Wird ein Plan gewählt, gilt er, bis wieder *Automatik* gewählt wird.
 - **Urlaub eintragen:** Zeitraum und den Plan für diese Zeit angeben.
 - **Bearbeiten** öffnet den Editor.
 
 <br clear="right">
 
-### Tagespläne
+### Pläne
 
 <p>
   <img src="docs/images/editor-profiles.png" width="420" alt="Tagesplan-Editor">
@@ -114,15 +113,21 @@ Darüber steht eine Zusammenfassung, z. B.
 - Das gestrichelte Ende zeigt, wie die Kurve in den nächsten Tag übergeht.
 - **Kurve kopieren von** übernimmt alle Punkte eines anderen Plans.
 
-### Wochenplan
+### Aktivierungen
 
-<img src="docs/images/editor-week.png" width="420" alt="Wochenplan">
+Pläne stehen für alle Eingangsarten zur Verfügung. Jede Aktivierung enthält eine
+Bedingung und einen Zielplan: **Wochentag** mit Mehrfachauswahl über Checkboxen oder
+**Feiertagskalender** mit Kalender- bzw. Workday-Binärsensor-Auswahl. Die Quelle
+wird hier statt in der Hauptkonfiguration gewählt. Ein Kalenderereignis markiert
+einen freien Tag; ein Workday-Sensor trifft bei `off` zu.
 
-Für jeden Wochentag und für Feiertage einen Plan wählen. Die Monatsübersicht
-zeigt, welcher Plan an welchem Tag gilt, inklusive Feiertagen (★) und
-Ausnahmen (✈).
+Der **erste passende Eintrag gilt**. Mit ↑/↓ oder Drag-and-drop umsortieren.
+Ohne Treffer gilt der erste Plan. Manuelle Auswahl und Datumsausnahmen haben
+Vorrang. Vorhandene Zuordnungen werden automatisch übernommen; Feiertage stehen
+zunächst an erster Stelle, um das bisherige Verhalten zu erhalten. Bestehende
+numerische Kurven werden in jeden Plan kopiert.
 
-### Urlaub & Ausnahmen
+### Ausnahmen
 
 <img src="docs/images/editor-exceptions.png" width="420" alt="Ausnahmen">
 
@@ -144,7 +149,7 @@ Nach dem Speichern wird der neue Wert sofort geschrieben.
 - Ein Plan beschreibt einen Tag von 00:00 bis 24:00. **Über Mitternacht**
   läuft die Kurve zum ersten Punkt des Plans des **Folgetags**. Der Wechsel
   von Werktag zu Wochenende erzeugt also keinen Sprung (außer bei *Stufe*).
-- Priorität für einen Tag: **manueller Modus > Ausnahme > Feiertag > Wochentag**.
+- Priorität für einen Tag: **manueller Modus > Datumsausnahme > erste passende Aktivierung > erster Plan**.
 - *Kurve* ist eine monotone kubische Interpolation (PCHIP, Fritsch–Carlson).
   Sie geht durch alle Punkte, schwingt nicht über und hat keine Knicke.
   *Weich* verwendet Smoothstep zwischen zwei Punkten.

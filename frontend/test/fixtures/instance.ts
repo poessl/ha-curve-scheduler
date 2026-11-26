@@ -17,6 +17,10 @@ export function instance(): InstanceData {
       threshold: 0,
     },
     schedule: {
+      activations: [
+        ...(["mon", "tue", "wed", "thu", "fri"] as const).map(day => ({ type: "weekday" as const, day, profile: "workday" })),
+        ...(["sat", "sun"] as const).map(day => ({ type: "weekday" as const, day, profile: "day_off" })),
+      ],
       profiles: {
         workday: {
           name: "Werktag",

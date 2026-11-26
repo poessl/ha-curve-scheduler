@@ -37,7 +37,8 @@ async def numeric_entry(hass: HomeAssistant, **options: Any) -> Any:
     entry = await setup_entry(hass, make_entry("", **{**SENSOR_OPTIONS, **options}))
     runtime = entry.runtime_data
     schedule = runtime.schedule_dict()
-    schedule["curve"] = [{"x": -20, "v": 70}, {"x": 40, "v": 20}]
+    for profile in schedule["profiles"].values():
+        profile["curve"] = [{"x": -20, "v": 70}, {"x": 40, "v": 20}]
     await runtime.async_save_schedule(schedule, runtime.revision)
     return entry
 
@@ -103,11 +104,20 @@ async def test_save_validation_preview_and_restart(hass: HomeAssistant) -> None:
         [{"x": 1, "v": float("inf")}],
     ):
         with pytest.raises(ScheduleValidationError):
-            await runtime.async_save_schedule({**schedule, "curve": points}, runtime.revision)
+            await runtime.async_save_schedule(
+                {
+                    **schedule,
+                    "profiles": {
+                        **schedule["profiles"],
+                        "workday": {**schedule["profiles"]["workday"], "curve": points},
+                    },
+                },
+                runtime.revision,
+            )
     assert runtime.preview(dt_util.now().date(), None, 5)[0] == [-20, 70]
     revision = runtime.revision
     await hass.config_entries.async_reload(entry.entry_id)
-    assert entry.runtime_data.schedule_dict()["curve"] == schedule["curve"]
+    assert entry.runtime_data.schedule_dict()["profiles"] == schedule["profiles"]
     assert entry.runtime_data.revision == revision
 
 
@@ -153,7 +163,7 @@ async def test_sensor_setup_and_remove_target(hass: HomeAssistant, target: str) 
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert hass.states.get("sensor.sensor_curve_setpoint").state == "unavailable"
-    assert hass.states.get("select.sensor_curve_mode") is None
+    assert hass.states.get("select.sensor_curve_mode") is not None
     entry = await setup_entry(hass, make_entry())
     flow = await hass.config_entries.options.async_init(entry.entry_id)
     flow = await hass.config_entries.options.async_configure(
@@ -236,7 +246,8 @@ async def test_switch_from_sensor_drops_required_input_field(
     entry = await numeric_entry(hass)
     runtime = entry.runtime_data
     schedule = runtime.schedule_dict()
-    schedule["curve"] = [{"x": 1, "v": 30}, {"x": 7, "v": 60}]
+    for profile in schedule["profiles"].values():
+        profile["curve"] = [{"x": 1, "v": 30}, {"x": 7, "v": 60}]
     await runtime.async_save_schedule(schedule, runtime.revision)
     flow = await hass.config_entries.options.async_init(entry.entry_id)
     assert {str(key) for key in flow["data_schema"].schema} == {"axis_source"}

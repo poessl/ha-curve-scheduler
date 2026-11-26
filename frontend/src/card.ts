@@ -229,7 +229,7 @@ export class CurveSchedulerCard extends LitElement {
     const today = data.state.now.slice(0, 10);
     const profiles = Object.keys(data.schedule.profiles);
     const profile =
-      profiles.find((id) => /urlaub|holiday|vacation/i.test(id)) ?? data.schedule.holiday_profile;
+      profiles.find((id) => /urlaub|holiday|vacation|day_off/i.test(id)) ?? profiles[0];
     this._holidayForm = {
       from: today,
       to: addDays(today, 6),
@@ -298,7 +298,7 @@ export class CurveSchedulerCard extends LitElement {
         <div class="headline">${parts.join(" · ")}</div>
         ${reason ? html`<div class="muted">${reason}</div>` : nothing}
       </div>
-      <curve-scheduler-curve
+      ${config.axis && config.axis.source !== "time_of_day" ? html`<curve-scheduler-numeric-editor .data=${{ ...data, schedule: { ...schedule, curve: profile?.curve ?? [] } }} .language=${this.language}></curve-scheduler-numeric-editor>` : html`<curve-scheduler-curve
         .points=${profile?.points ?? []}
         .context=${context}
         .mode=${config.interpolation}
@@ -314,7 +314,7 @@ export class CurveSchedulerCard extends LitElement {
         .nowValue=${nowValue}
         .height=${170}
         .showContinuation=${false}
-      ></curve-scheduler-curve>
+      ></curve-scheduler-curve>`}
       ${state.enabled ? nothing : html`<div class="notice warning">${this.t("today.disabled")}</div>`}
       ${state.enabled && config.target && !state.target_available
         ? html`<div class="notice warning">${this.t("today.unavailable")}</div>`
@@ -401,9 +401,7 @@ export class CurveSchedulerCard extends LitElement {
       content = html`<div class="muted">${this.t("card.loading")}</div>`;
     } else {
       const showEditor = this.canEdit && (this._config.view === "full" || this._editorOpen);
-      content = this._data.config.axis && this._data.config.axis.source !== "time_of_day" ? html`
-        <curve-scheduler-numeric-editor .hass=${this.hass} .data=${this._data} .editable=${this.canEdit} .language=${this.language} .editing=${this._config.view === "full"}></curve-scheduler-numeric-editor>
-      ` : html`
+      content = html`
         ${this.renderToday(this._data)}
         ${showEditor
           ? html`<curve-scheduler-editor

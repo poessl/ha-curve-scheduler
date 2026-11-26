@@ -63,8 +63,9 @@ export const fetchHolidays = (
   entryId: string,
   start: string,
   end: string,
+  source?: string,
 ): Promise<{ configured: boolean; holidays: string[] }> =>
-  hass.callWS({ type: "curve_scheduler/holidays", entry_id: entryId, start, end });
+  hass.callWS({ type: "curve_scheduler/holidays", entry_id: entryId, start, end, ...(source ? { source } : {}) });
 
 export const setMode = (
   hass: HomeAssistant,
