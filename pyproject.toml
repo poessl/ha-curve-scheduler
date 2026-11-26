@@ -1,6 +1,6 @@
 [project]
 name = "curve_scheduler"
-version = "0.1.0"
+version = "0.2.0"
 description = "Home Assistant integration: daily setpoint curves with a visual editor card"
 requires-python = ">=3.13"
 license = "MIT"
