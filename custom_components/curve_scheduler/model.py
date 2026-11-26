@@ -384,7 +384,7 @@ def validate_schedule(
 def profile_usages(data: Mapping[str, Any], profile_id: str) -> list[str]:
     """Return where a profile is referenced (for delete protection)."""
     if "activations" in data:
-        usages = []
+        usages: list[str] = []
         for key in ("activations", "exceptions"):
             entries = data.get(key)
             if isinstance(entries, list):

@@ -6,6 +6,8 @@
 
 🇩🇪 [Deutsche Anleitung](README.de.md)
 
+Maintainer: Jonas Poessl ([@poessl](https://github.com/poessl)).
+
 **Curve Scheduler** calculates a value that changes over the day and writes it to a
 device at regular intervals. The target is optional: without one, use the calculated
 setpoint sensor in automations. The X-axis can also be a numeric sensor or month of year. The typical use is the hot water circulation

@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Home Assistant integration: daily setpoint curves with a visual editor card"
 requires-python = ">=3.13"
 license = "MIT"
+maintainers = [{ name = "Jonas Poessl" }]
 
 [tool.ruff]
 target-version = "py313"

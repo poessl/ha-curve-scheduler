@@ -2,6 +2,8 @@
 
 🇬🇧 [English version](README.md)
 
+Maintainer: Jonas Poessl ([@poessl](https://github.com/poessl)).
+
 **Curve Scheduler** berechnet einen Wert, der sich über den Tag verändert, und
 schreibt ihn regelmäßig in ein Gerät. Typisch ist die Soll-Temperatur einer
 Warmwasser-Zirkulation, es funktioniert aber mit jedem Zahlenwert:

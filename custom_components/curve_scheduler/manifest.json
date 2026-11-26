@@ -2,7 +2,7 @@
   "domain": "curve_scheduler",
   "name": "Curve Scheduler",
   "codeowners": [
-    "@timzifer"
+    "@poessl"
   ],
   "config_flow": true,
   "dependencies": [
