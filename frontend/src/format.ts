@@ -52,3 +52,11 @@ export function niceTicks(min: number, max: number, target = 5): number[] {
   }
   return ticks;
 }
+
+/** Bounded axis labels; 0 preserves automatic spacing. */
+export function axisTicks(min: number, max: number, step = 0): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) return [];
+  if (!(step > 0) || !Number.isFinite(step)) return niceTicks(min, max);
+  const count = Math.min(101, Math.floor((max - min) / step + 1e-9) + 1);
+  return Array.from({ length: count }, (_, i) => Number((min + i * step).toPrecision(12)));
+}

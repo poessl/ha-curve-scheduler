@@ -2,6 +2,7 @@
 
 import "./card";
 import "./card-editor";
+import "./panel";
 import { translator } from "./i18n";
 
 declare global {

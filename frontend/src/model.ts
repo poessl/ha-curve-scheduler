@@ -45,7 +45,11 @@ export interface ScheduleException {
   note?: string;
 }
 
+export interface NumericPoint { x: number; v: number; }
+export interface AxisConfig { source: "time_of_day" | "month_of_year" | "sensor"; input_entity: string | null; min: number; max: number; step: number; wrap: boolean; }
+
 export interface Schedule {
+  curve?: NumericPoint[];
   profiles: Record<string, Profile>;
   week: Record<Weekday, string>;
   holiday_profile: string;
@@ -54,6 +58,10 @@ export interface Schedule {
 }
 
 export interface InstanceConfig {
+  x_label_step?: number;
+  y_label_step?: number;
+  axis?: AxisConfig;
+  output_tick_seconds?: number;
   target: string;
   interval: number;
   interpolation: Mode;
@@ -68,15 +76,17 @@ export interface InstanceConfig {
 export type Reason = "weekday" | "holiday" | "exception" | "override";
 
 export interface LiveState {
+  input_value?: number | null;
+  input_available?: boolean;
   now: string;
   enabled: boolean;
   override: { profile: string; until: string | null } | null;
-  value: number;
-  raw_value: number;
+  value: number | null;
+  raw_value: number | null;
   profile_id: string;
   reason: Reason;
   next_point: { time: string; hhmm: string; value: number } | null;
-  value_in_1h: number;
+  value_in_1h: number | null;
   target_available: boolean;
   target_value: number | null;
   timeline: { date: string; profile_id: string; reason: Reason }[];

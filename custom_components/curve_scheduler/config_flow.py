@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from homeassistant.config_entries import (
@@ -15,8 +16,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 import voluptuous as vol
 
+from .axis import axis_config
 from .const import (
+    AXIS_SOURCES,
+    CONF_AXIS,
     CONF_HOLIDAY_SOURCE,
+    CONF_INPUT,
     CONF_INTERPOLATION,
     CONF_INTERVAL,
     CONF_MAX,
@@ -24,7 +29,12 @@ from .const import (
     CONF_STEP,
     CONF_TARGET,
     CONF_THRESHOLD,
+    CONF_TICK,
     CONF_UNIT,
+    CONF_X_MAX,
+    CONF_X_MIN,
+    CONF_X_STEP,
+    CONF_X_WRAP,
     DEFAULT_INTERPOLATION,
     DEFAULT_INTERVAL,
     DEFAULT_MAX,
@@ -36,6 +46,7 @@ from .const import (
     INTERPOLATION_MODES,
     TARGET_DOMAINS,
 )
+from .model import validate_schedule
 
 
 def target_defaults(hass: HomeAssistant, entity_id: str) -> dict[str, Any]:
@@ -45,7 +56,7 @@ def target_defaults(hass: HomeAssistant, entity_id: str) -> dict[str, Any]:
         CONF_MAX: DEFAULT_MAX,
         CONF_UNIT: "",
     }
-    state = hass.states.get(entity_id)
+    state = hass.states.get(entity_id) if entity_id else None
     if state is None:
         return defaults
     domain = entity_id.split(".", 1)[0]
@@ -82,20 +93,15 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
     """Build the schema of the settings step."""
     fields: dict[Any, Any] = {}
     if include_target:
-        fields[vol.Required(CONF_TARGET, default=values[CONF_TARGET])] = _target_selector()
+        fields[
+            vol.Optional(CONF_TARGET, description={"suggested_value": values.get(CONF_TARGET)})
+        ] = _target_selector()
     fields.update(
         {
             vol.Required(
-                CONF_INTERVAL, default=values.get(CONF_INTERVAL, DEFAULT_INTERVAL)
-            ): selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=1,
-                    max=60,
-                    step=1,
-                    unit_of_measurement="min",
-                    mode=selector.NumberSelectorMode.SLIDER,
-                )
-            ),
+                CONF_TICK,
+                default=values.get(CONF_TICK, values.get(CONF_INTERVAL, DEFAULT_INTERVAL) * 60),
+            ): _number(1, 86400),
             vol.Required(
                 CONF_INTERPOLATION,
                 default=values.get(CONF_INTERPOLATION, DEFAULT_INTERPOLATION),
@@ -106,6 +112,8 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
                     mode=selector.SelectSelectorMode.LIST,
                 )
             ),
+            vol.Required("x_label_step", default=values.get("x_label_step", 0)): _number(0, 1e12),
+            vol.Required("y_label_step", default=values.get("y_label_step", 0)): _number(0, 1e12),
             vol.Required(CONF_MIN, default=values[CONF_MIN]): _number(-10000, 10000),
             vol.Required(CONF_MAX, default=values[CONF_MAX]): _number(-10000, 10000),
             vol.Required(CONF_STEP, default=values.get(CONF_STEP, DEFAULT_STEP)): _number(
@@ -123,6 +131,22 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
             ): _number(0, 1000),
         }
     )
+    axis = axis_config(values)
+    if axis["source"] != "time_of_day":
+        fields.update(
+            {
+                vol.Required(CONF_X_MIN, default=axis["min"]): _number(-1e12, 1e12),
+                vol.Required(CONF_X_MAX, default=axis["max"]): _number(-1e12, 1e12),
+                vol.Required(CONF_X_STEP, default=axis["step"]): _number(1e-6, 1e12),
+                vol.Required(CONF_X_WRAP, default=axis["wrap"]): selector.BooleanSelector(),
+            }
+        )
+        if axis["source"] == "sensor":
+            fields[
+                vol.Required(CONF_INPUT, description={"suggested_value": values.get(CONF_INPUT)})
+            ] = selector.EntitySelector(
+                selector.EntitySelectorConfig(domain=["sensor", "input_number", "number"])
+            )
     return vol.Schema(fields)
 
 
@@ -135,13 +159,53 @@ def validate_settings(user_input: dict[str, Any]) -> dict[str, str]:
         errors[CONF_STEP] = "step_positive"
     if float(user_input[CONF_THRESHOLD]) < 0:
         errors[CONF_THRESHOLD] = "threshold_negative"
+    tick = user_input.get(CONF_TICK, user_input.get(CONF_INTERVAL, DEFAULT_INTERVAL) * 60)
+    if not isinstance(tick, (int, float)) or not math.isfinite(tick) or not 1 <= tick <= 86400:
+        errors[CONF_TICK] = "invalid_tick"
+    source = user_input.get(CONF_AXIS, "time_of_day")
+    if source not in AXIS_SOURCES:
+        errors[CONF_AXIS] = "invalid_axis"
+        return errors
+    try:
+        axis = axis_config(user_input)
+        if (
+            not all(math.isfinite(axis[k]) for k in ("min", "max", "step"))
+            or axis["min"] >= axis["max"]
+            or axis["step"] <= 0
+            or axis["step"] > axis["max"] - axis["min"]
+        ):
+            errors[CONF_X_MAX] = "invalid_axis"
+    except (TypeError, ValueError):
+        errors[CONF_X_MAX] = "invalid_axis"
+    if source == "sensor" and not user_input.get(CONF_INPUT):
+        errors[CONF_INPUT] = "input_required"
+    label_axis = axis_config(user_input) if CONF_X_MAX not in errors else None
+    if (
+        source == "sensor"
+        and user_input.get(CONF_INPUT) == user_input.get(CONF_TARGET)
+        and user_input.get(CONF_INPUT)
+    ):
+        errors[CONF_INPUT] = "input_is_target"
+    for key, span in (
+        ("x_label_step", label_axis["max"] - label_axis["min"] if label_axis else 0),
+        ("y_label_step", float(user_input[CONF_MAX]) - float(user_input[CONF_MIN])),
+    ):
+        value = float(user_input.get(key, 0))
+        if not math.isfinite(value) or value < 0 or (value > 0 and span / value > 100):
+            errors[key] = "invalid_label_step"
+    for key in (CONF_MIN, CONF_MAX, CONF_STEP, CONF_THRESHOLD):
+        if not math.isfinite(float(user_input[key])):
+            errors[key] = "invalid_number"
     return errors
 
 
 def clean_settings(user_input: dict[str, Any]) -> dict[str, Any]:
     """Normalize numeric types and optional fields."""
     result = dict(user_input)
-    result[CONF_INTERVAL] = int(result[CONF_INTERVAL])
+    if CONF_INTERVAL in result:
+        result[CONF_INTERVAL] = int(result[CONF_INTERVAL])
+    if CONF_TICK in result:
+        result[CONF_TICK] = float(result[CONF_TICK])
     for key in (CONF_MIN, CONF_MAX, CONF_STEP, CONF_THRESHOLD):
         result[key] = float(result[key])
     result[CONF_UNIT] = (result.get(CONF_UNIT) or "").strip()
@@ -159,25 +223,33 @@ class CurveSchedulerConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize the flow."""
         self._name: str = ""
         self._target: str = ""
+        self._axis = "time_of_day"
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Ask for name and target entity."""
         errors: dict[str, str] = {}
         if user_input is not None:
             self._name = user_input[CONF_NAME].strip()
-            self._target = user_input[CONF_TARGET]
+            self._target = user_input.get(CONF_TARGET) or ""
+            self._axis = user_input.get(CONF_AXIS, "time_of_day")
             if not self._name:
                 errors[CONF_NAME] = "name_required"
             else:
-                await self.async_set_unique_id(self._target)
-                self._abort_if_unique_id_configured()
+                if self._target:
+                    await self.async_set_unique_id(self._target)
+                    self._abort_if_unique_id_configured()
                 return await self.async_step_settings()
         return self.async_show_form(
             step_id="user",
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_NAME, default=self._name): selector.TextSelector(),
-                    vol.Required(CONF_TARGET): _target_selector(),
+                    vol.Optional(CONF_TARGET): _target_selector(),
+                    vol.Required(CONF_AXIS, default=self._axis): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=AXIS_SOURCES, translation_key="axis_source"
+                        )
+                    ),
                 }
             ),
             errors=errors,
@@ -189,7 +261,8 @@ class CurveSchedulerConfigFlow(ConfigFlow, domain=DOMAIN):
         """Ask for the remaining settings."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = validate_settings(user_input)
+            user_input = {CONF_AXIS: self._axis, **user_input}
+            errors = validate_settings({**user_input, CONF_TARGET: self._target})
             if not errors:
                 return self.async_create_entry(
                     title=self._name,
@@ -198,7 +271,7 @@ class CurveSchedulerConfigFlow(ConfigFlow, domain=DOMAIN):
                 )
             values = {**user_input}
         else:
-            values = target_defaults(self.hass, self._target)
+            values = {**target_defaults(self.hass, self._target), CONF_AXIS: self._axis}
         return self.async_show_form(
             step_id="settings",
             data_schema=settings_schema(values, include_target=False),
@@ -216,36 +289,86 @@ class CurveSchedulerConfigFlow(ConfigFlow, domain=DOMAIN):
 class CurveSchedulerOptionsFlow(OptionsFlow):
     """Change settings after setup."""
 
+    def __init__(self) -> None:
+        """Keep the selected axis separate from its dependent settings."""
+        self._axis = "time_of_day"
+
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Show the settings form."""
+        """Select the axis before building fields which depend on it."""
+        if user_input is not None:
+            self._axis = user_input[CONF_AXIS]
+            return await self.async_step_settings()
+        self._axis = self.config_entry.options.get(CONF_AXIS, "time_of_day")
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_AXIS, default=self._axis): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=AXIS_SOURCES, translation_key="axis_source"
+                        )
+                    )
+                }
+            ),
+        )
+
+    async def async_step_settings(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show only the settings applicable to the selected axis."""
         errors: dict[str, str] = {}
         if user_input is not None:
+            user_input = {**user_input, CONF_AXIS: self._axis}
             errors = validate_settings(user_input)
-            target = user_input[CONF_TARGET]
-            if any(
+            target = user_input.get(CONF_TARGET) or ""
+            if target and any(
                 entry.unique_id == target and entry.entry_id != self.config_entry.entry_id
                 for entry in self.hass.config_entries.async_entries(DOMAIN)
             ):
                 errors[CONF_TARGET] = "target_in_use"
+            candidate_axis = axis_config(user_input) if not errors else None
+            runtime = self.config_entry.runtime_data
+            if (
+                candidate_axis
+                and candidate_axis["source"] != "time_of_day"
+                and "curve" in runtime.data
+            ) and validate_schedule(
+                runtime.data,
+                float(user_input[CONF_MIN]),
+                float(user_input[CONF_MAX]),
+                candidate_axis,
+            ):
+                errors[CONF_X_MAX] = "curve_out_of_range"
             if not errors:
                 options = clean_settings(user_input)
-                target = options.pop(CONF_TARGET)
-                if target != self.config_entry.data[CONF_TARGET]:
+                target = options.pop(CONF_TARGET, "") or ""
+                if target != self.config_entry.data.get(CONF_TARGET, ""):
                     self.hass.config_entries.async_update_entry(
                         self.config_entry,
                         data={**self.config_entry.data, CONF_TARGET: target},
-                        unique_id=target,
+                        unique_id=target or None,
                     )
                 return self.async_create_entry(data=options)
             values = {**user_input}
         else:
             values = {
-                **target_defaults(self.hass, self.config_entry.data[CONF_TARGET]),
+                **target_defaults(self.hass, self.config_entry.data.get(CONF_TARGET, "")),
                 **self.config_entry.options,
-                CONF_TARGET: self.config_entry.data[CONF_TARGET],
+                CONF_TARGET: self.config_entry.data.get(CONF_TARGET, ""),
             }
+            if self._axis != values.get(CONF_AXIS, "time_of_day"):
+                for key in (
+                    CONF_INPUT,
+                    CONF_X_MIN,
+                    CONF_X_MAX,
+                    CONF_X_STEP,
+                    CONF_X_WRAP,
+                    "x_label_step",
+                ):
+                    values.pop(key, None)
+            values[CONF_AXIS] = self._axis
         return self.async_show_form(
-            step_id="init",
+            step_id="settings",
             data_schema=settings_schema(values, include_target=True),
             errors=errors,
         )

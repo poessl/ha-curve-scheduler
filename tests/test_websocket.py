@@ -210,3 +210,36 @@ async def test_non_admin_can_call_services(hass: HomeAssistant, entry: Any, clie
     msg = await client.receive_json()
     assert msg["success"], msg
     assert float(hass.states.get(TARGET).state) == 60
+
+
+async def test_numeric_curve_round_trip(hass: HomeAssistant, entry: Any, client: Any) -> None:
+    from .test_axis import SENSOR_OPTIONS
+
+    hass.states.async_set("sensor.outdoor_temperature", "10")
+    numeric = await setup_entry(hass, make_entry("", **SENSOR_OPTIONS))
+    schedule = numeric.runtime_data.schedule_dict()
+    schedule["curve"] = [{"x": -20, "v": 70}, {"x": 40, "v": 20}]
+    await client.send_json_auto_id(
+        {
+            "type": "curve_scheduler/save",
+            "entry_id": numeric.entry_id,
+            "revision": numeric.runtime_data.revision,
+            "schedule": schedule,
+        }
+    )
+    assert (await client.receive_json())["result"]["ok"]
+    await client.send_json_auto_id({"type": "curve_scheduler/get", "entry_id": numeric.entry_id})
+    data = (await client.receive_json())["result"]
+    assert data["state"]["value"] == 45
+    assert data["schedule"]["curve"] == schedule["curve"]
+    schedule["curve"] = [{"x": 1, "v": 30}, {"x": 1, "v": 40}]
+    await client.send_json_auto_id(
+        {
+            "type": "curve_scheduler/preview",
+            "entry_id": numeric.entry_id,
+            "schedule": schedule,
+        }
+    )
+    result = (await client.receive_json())["result"]
+    assert result["ok"] is False
+    assert result["errors"][0]["code"] == "invalid_x"

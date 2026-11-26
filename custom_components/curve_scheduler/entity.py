@@ -7,6 +7,7 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.util import slugify
 
 from .const import DOMAIN
+from .frontend import PANEL_PATH
 from .runtime import CurveSchedulerRuntime
 
 
@@ -29,6 +30,7 @@ class CurveSchedulerEntity(Entity):
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
             name=f"Curve Scheduler {entry.title}",
+            configuration_url=f"homeassistant://{PANEL_PATH}?entry_id={entry.entry_id}",
             manufacturer="Curve Scheduler",
             model="Curve Scheduler",
             entry_type=DeviceEntryType.SERVICE,

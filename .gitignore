@@ -227,3 +227,6 @@ frontend/demo/demo.js
 # Home Assistant dev config
 config/*
 !config/configuration.yaml
+
+# Isolated Docker dev instance (includes HA credentials and state)
+dev/config/

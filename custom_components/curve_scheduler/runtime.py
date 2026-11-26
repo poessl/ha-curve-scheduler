@@ -23,6 +23,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
+from .axis import axis_config, default_curve, evaluate_curve, input_value
 from .const import (
     CONF_HOLIDAY_SOURCE,
     CONF_INTERPOLATION,
@@ -83,12 +84,13 @@ class RevisionConflictError(HomeAssistantError):
 class ComputedValue:
     """Result of a computation for one point in time."""
 
-    raw: float
-    value: float
+    raw: float | None
+    value: float | None
     profile_id: str
     reason: str
     next_point_time: datetime | None
     next_point_value: float | None
+    input_x: float | None = None
 
 
 def local_datetime(day: date, minutes: float) -> datetime:
@@ -132,12 +134,22 @@ class CurveSchedulerRuntime:
     @property
     def target(self) -> str:
         """Return the target entity id."""
-        return str(self.options[CONF_TARGET])
+        return str(self.options.get(CONF_TARGET) or "")
 
     @property
     def interval(self) -> int:
         """Return the write interval in minutes."""
         return int(self.options.get(CONF_INTERVAL, DEFAULT_INTERVAL))
+
+    @property
+    def tick_seconds(self) -> float:
+        """Output evaluation cadence, falling back to the legacy minute interval."""
+        return float(self.options.get("output_tick_seconds", self.interval * 60))
+
+    @property
+    def axis(self) -> dict[str, Any]:
+        """Return the resolved input-axis configuration."""
+        return axis_config(self.options)
 
     @property
     def mode(self) -> str:
@@ -189,6 +201,10 @@ class CurveSchedulerRuntime:
         return {
             "target": self.target,
             "interval": self.interval,
+            "output_tick_seconds": self.tick_seconds,
+            "axis": self.axis,
+            "x_label_step": float(self.options.get("x_label_step", 0)),
+            "y_label_step": float(self.options.get("y_label_step", 0)),
             "interpolation": self.mode,
             "min": self.minimum,
             "max": self.maximum,
@@ -200,7 +216,7 @@ class CurveSchedulerRuntime:
 
     def schedule_dict(self) -> dict[str, Any]:
         """Return the editable schedule."""
-        return {key: copy.deepcopy(self.data[key]) for key in EDITABLE_KEYS}
+        return {key: copy.deepcopy(self.data[key]) for key in EDITABLE_KEYS if key in self.data}
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -217,7 +233,10 @@ class CurveSchedulerRuntime:
             await self.store.async_save(self.data)
         else:
             self.data = migrate_data(stored)
-        issues = validate_schedule(self.data, -math.inf, math.inf)
+        if self.axis["source"] != "time_of_day" and "curve" not in self.data:
+            self.data["curve"] = default_curve(self.axis, self.minimum, self.maximum)
+            await self.store.async_save(self.data)
+        issues = validate_schedule(self.data, -math.inf, math.inf, self.axis)
         if issues:
             _LOGGER.warning(
                 "Stored schedule for %s has problems: %s",
@@ -229,18 +248,25 @@ class CurveSchedulerRuntime:
         """Set up listeners and timers."""
         now = dt_util.now()
         self._last_day = now.date()
-        self._unsubs.append(
-            async_track_state_change_event(self.hass, [self.target], self._async_target_changed)
-        )
+        if self.target:
+            self._unsubs.append(
+                async_track_state_change_event(self.hass, [self.target], self._async_target_changed)
+            )
         if self.holiday_source:
             self._unsubs.append(
                 async_track_state_change_event(
                     self.hass, [self.holiday_source], self._async_holiday_source_changed
                 )
             )
-        next_minute = dt_util.utcnow().replace(second=0, microsecond=0) + timedelta(minutes=1)
+        if self.axis["source"] == "sensor" and self.axis["input_entity"]:
+            self._unsubs.append(
+                async_track_state_change_event(
+                    self.hass, [self.axis["input_entity"]], self._async_input_changed
+                )
+            )
+        next_tick = dt_util.utcnow() + timedelta(seconds=self.tick_seconds)
         self._unsubs.append(
-            async_track_point_in_utc_time(self.hass, self._async_start_interval, next_minute)
+            async_track_point_in_utc_time(self.hass, self._async_start_interval, next_tick)
         )
         self._schedule_override_expiry()
         self._compute(now)
@@ -264,7 +290,9 @@ class CurveSchedulerRuntime:
         if self._stopped:
             return
         self._unsubs.append(
-            async_track_time_interval(self.hass, self._async_tick, timedelta(minutes=self.interval))
+            async_track_time_interval(
+                self.hass, self._async_tick, timedelta(seconds=self.tick_seconds)
+            )
         )
         await self._async_tick(_now)
 
@@ -274,6 +302,11 @@ class CurveSchedulerRuntime:
             self._last_day = now.date()
             await self._async_cleanup_exceptions(now.date())
         await self.async_update(force=False)
+
+    @callback
+    def _async_input_changed(self, _event: Event[EventStateChangedData]) -> None:
+        """Recalculate immediately on a numeric input update, in addition to ticks."""
+        self.hass.async_create_task(self.async_update())
 
     @callback
     def _async_target_changed(self, event: Event[EventStateChangedData]) -> None:
@@ -346,6 +379,23 @@ class CurveSchedulerRuntime:
     def compute_at(self, at: datetime) -> ComputedValue:
         """Compute the setpoint for a point in time."""
         local = dt_util.as_local(at)
+        if self.axis["source"] != "time_of_day":
+            x = input_value(self.hass, local, self.axis)
+            raw = (
+                evaluate_curve(self.data["curve"], x, self.axis, self.mode)
+                if x is not None
+                else None
+            )
+            value = (
+                clamp(
+                    round_to_step(clamp(raw, self.minimum, self.maximum), self.step),
+                    self.minimum,
+                    self.maximum,
+                )
+                if raw is not None
+                else None
+            )
+            return ComputedValue(raw, value, "", "input", None, None, x)
         days = self.timeline_profiles(local)
         timeline = build_timeline(
             [profile_points(self.data["profiles"][dp.profile_id]) for _, dp in days]
@@ -361,7 +411,7 @@ class CurveSchedulerRuntime:
         next_time = local_datetime(local.date(), upcoming[0]) if upcoming else None
         next_value = upcoming[1] if upcoming else None
         today = days[2][1]
-        return ComputedValue(raw, value, today.profile_id, today.reason, next_time, next_value)
+        return ComputedValue(raw, value, today.profile_id, today.reason, next_time, next_value, x)
 
     def _compute(self, now: datetime) -> ComputedValue:
         self.current = self.compute_at(now)
@@ -372,6 +422,12 @@ class CurveSchedulerRuntime:
     ) -> list[list[float]]:
         """Return the curve of ``day`` as ``[minute, value]`` pairs."""
         data = self.data if schedule is None else {**self.data, **schedule}
+        if self.axis["source"] != "time_of_day":
+            width = self.axis["max"] - self.axis["min"]
+            return [
+                [x, evaluate_curve(data["curve"], x, self.axis, self.mode)]
+                for x in (self.axis["min"] + width * i / 288 for i in range(289))
+            ]
         override = self.active_override(dt_util.now())
         profiles = []
         for current_day in timeline_days(day):
@@ -391,7 +447,7 @@ class CurveSchedulerRuntime:
 
     def target_value(self) -> float | None:
         """Return the current value of the target entity (if any)."""
-        state = self.hass.states.get(self.target)
+        state = self.hass.states.get(self.target) if self.target else None
         if state is None:
             return None
         domain = self.target.split(".", 1)[0]
@@ -405,7 +461,7 @@ class CurveSchedulerRuntime:
 
     def target_available(self) -> bool:
         """Return whether the target can be written."""
-        state = self.hass.states.get(self.target)
+        state = self.hass.states.get(self.target) if self.target else None
         return state is not None and state.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
 
     async def async_update(self, force: bool = False) -> None:
@@ -419,17 +475,19 @@ class CurveSchedulerRuntime:
             return
         now = dt_util.now()
         await self._async_expire_override(now)
-        if self.holidays.configured and self.holidays.is_stale(now):
-            self.holidays.clear()
-        await self.holidays.async_ensure(
-            now.date() - timedelta(days=2), now.date() + timedelta(days=3)
-        )
+        if self.axis["source"] == "time_of_day":
+            if self.holidays.configured and self.holidays.is_stale(now):
+                self.holidays.clear()
+            await self.holidays.async_ensure(
+                now.date() - timedelta(days=2), now.date() + timedelta(days=3)
+            )
         computed = self._compute(now)
-        await self._async_write(computed.value, force)
+        if computed.value is not None:
+            await self._async_write(computed.value, force)
         self._notify()
 
     async def _async_write(self, value: float, force: bool) -> None:
-        if not self.enabled:
+        if not self.enabled or not self.target:
             return
         if not self.target_available():
             if not self._unavailable_warned:
@@ -471,7 +529,7 @@ class CurveSchedulerRuntime:
         """Validate and store new schedule data from the editor."""
         if revision is not None and revision != self.revision:
             raise RevisionConflictError(self.revision)
-        issues = validate_update(self.data, schedule, self.minimum, self.maximum)
+        issues = validate_update(self.data, schedule, self.minimum, self.maximum, self.axis)
         if issues:
             raise ScheduleValidationError(issues)
         self.data.update(normalize_schedule(schedule))
@@ -610,6 +668,8 @@ class CurveSchedulerRuntime:
             "override": copy.deepcopy(self.data.get("override")),
             "value": current.value,
             "raw_value": current.raw,
+            "input_value": current.input_x,
+            "input_available": current.value is not None,
             "profile_id": current.profile_id,
             "reason": current.reason,
             "next_point": (

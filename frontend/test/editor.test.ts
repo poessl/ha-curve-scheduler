@@ -221,6 +221,7 @@ describe("curve-scheduler-editor: saving", () => {
   });
 
   it("changes the profile of Saturday in the weekly plan", async () => {
+    editor._month = "2026-10-01";
     const tabs = editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab");
     tabs[1].click();
     await settle();
@@ -247,4 +248,23 @@ describe("curve-scheduler-editor: saving", () => {
       { from: "2026-10-29", to: "2026-11-04", profile: "day_off", note: "Urlaub" },
     ]);
   });
+});
+
+it("uses configurable time/value labels and guides the point being moved", async () => {
+  const curve = curveElement()!;
+  curve.xLabelStep = 180;
+  curve.yLabelStep = 10;
+  await curve.updateComplete;
+  expect([...curve.shadowRoot!.querySelectorAll("text.x")].map(el => el.textContent)).toContain("03:00");
+  expect(curve.shadowRoot!.querySelectorAll("text.y")).toHaveLength(6);
+  const point = points()[0];
+  const handle = curve.shadowRoot!.querySelector(".handle")!;
+  const minute = Number(point.t.slice(0, 2)) * 60 + Number(point.t.slice(3));
+  pointer("pointerdown", handle, curve.xFor(minute), curve.yFor(point.v));
+  pointer("pointermove", handle, curve.xFor(minute + 15), curve.yFor(point.v + 1));
+  await curve.updateComplete;
+  expect(curve.shadowRoot!.querySelectorAll(".guide")).toHaveLength(2);
+  pointer("pointerup", handle, curve.xFor(minute + 15), curve.yFor(point.v + 1));
+  await settle();
+  expect(curve.shadowRoot!.querySelectorAll(".guide")).toHaveLength(0);
 });

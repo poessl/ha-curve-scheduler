@@ -71,3 +71,13 @@ ATTR_TO: Final = "to"
 ATTR_NOTE: Final = "note"
 ATTR_EXCEPTION_ID: Final = "exception_id"
 ATTR_DATE: Final = "date"
+
+# Generic input axis and output cadence. Legacy interval remains minutes.
+CONF_TICK: Final = "output_tick_seconds"
+CONF_AXIS: Final = "axis_source"
+CONF_INPUT: Final = "input_entity"
+CONF_X_MIN: Final = "x_min"
+CONF_X_MAX: Final = "x_max"
+CONF_X_STEP: Final = "x_step"
+CONF_X_WRAP: Final = "x_wrap"
+AXIS_SOURCES: Final = ["time_of_day", "month_of_year", "sensor"]

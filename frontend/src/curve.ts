@@ -19,7 +19,7 @@ import {
   type Point,
 } from "./interpolation";
 import { MAX_POINTS, TIME_GRID_MINUTES, type SchedulePoint } from "./model";
-import { formatValue, niceTicks } from "./format";
+import { axisTicks, formatValue, niceTicks } from "./format";
 
 const PAD_LEFT = 44;
 const PAD_RIGHT = 10;
@@ -60,6 +60,8 @@ export class CurveSchedulerCurve extends LitElement {
     language: {},
     color: {},
     snapMinutes: { type: Number, attribute: "snap-minutes" },
+    xLabelStep: { type: Number },
+    yLabelStep: { type: Number },
     editable: { type: Boolean, reflect: true },
     nowMinute: { attribute: false },
     nowValue: { attribute: false },
@@ -82,6 +84,8 @@ export class CurveSchedulerCurve extends LitElement {
   declare language: string;
   declare color: string;
   declare snapMinutes: number;
+  declare xLabelStep: number;
+  declare yLabelStep: number;
   declare editable: boolean;
   declare nowMinute: number | null;
   declare nowValue: number | null;
@@ -105,6 +109,8 @@ export class CurveSchedulerCurve extends LitElement {
     this.language = "en";
     this.color = "var(--primary-color, #03a9f4)";
     this.snapMinutes = 15;
+    this.xLabelStep = 0;
+    this.yLabelStep = 0;
     this.editable = false;
     this.nowMinute = null;
     this.nowValue = null;
@@ -431,9 +437,9 @@ export class CurveSchedulerCurve extends LitElement {
   }
 
   private renderGrid() {
-    const ticks = niceTicks(this.min, this.max, this.height < 180 ? 3 : 5);
+    const ticks = this.yLabelStep > 0 ? axisTicks(this.min, this.max, this.yLabelStep) : niceTicks(this.min, this.max, this.height < 180 ? 3 : 5);
     const narrow = this._width < 420;
-    const hours = narrow ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24];
+    const minutes = this.xLabelStep > 0 ? axisTicks(0, MINUTES_PER_DAY, this.xLabelStep) : (narrow ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24]).map(hour => hour * 60);
     const bottom = PAD_TOP + this.plotHeight;
     return svg`
       ${ticks.map(
@@ -442,16 +448,16 @@ export class CurveSchedulerCurve extends LitElement {
             y1=${this.yFor(tick)} y2=${this.yFor(tick)}></line>
           <text class="label y" x=${PAD_LEFT - 6} y=${this.yFor(tick) + 4}>${formatValue(
             tick,
-            0.1,
+            this.yLabelStep || 0.1,
             null,
             this.language,
           )}</text>`,
       )}
-      ${hours.map(
-        (hour) => svg`
-          <line class="grid" x1=${this.xFor(hour * 60)} x2=${this.xFor(hour * 60)}
+      ${minutes.map(
+        (minute) => svg`
+          <line class="grid" x1=${this.xFor(minute)} x2=${this.xFor(minute)}
             y1=${PAD_TOP} y2=${bottom}></line>
-          <text class="label x" x=${this.xFor(hour * 60)} y=${bottom + 17}>${hour}</text>`,
+          <text class="label x" x=${this.xFor(minute)} y=${bottom + 17}>${this.xLabelStep > 0 ? formatTime(minute) : minute / 60}</text>`,
       )}
       ${
         this.showContinuation
@@ -562,6 +568,10 @@ export class CurveSchedulerCurve extends LitElement {
             ? svg`<path class="curve continuation" d=${dashed} style="stroke: ${this.color}"></path>`
             : nothing}
           ${this.renderNow()}
+          ${this._drag ? svg`
+            <line class="guide" x1=${PAD_LEFT} x2=${this.xFor(parseTime(points[this._drag.index].t))} y1=${this.yFor(points[this._drag.index].v)} y2=${this.yFor(points[this._drag.index].v)}></line>
+            <line class="guide" x1=${this.xFor(parseTime(points[this._drag.index].t))} x2=${this.xFor(parseTime(points[this._drag.index].t))} y1=${this.yFor(points[this._drag.index].v)} y2=${PAD_TOP + this.plotHeight}></line>
+          ` : nothing}
           ${this.editable
             ? nothing
             : points.map(
@@ -577,6 +587,7 @@ export class CurveSchedulerCurve extends LitElement {
   }
 
   static styles = css`
+    .guide { stroke: var(--primary-color); stroke-dasharray: 4 3; stroke-width: 1; pointer-events: none; }
     :host {
       display: block;
       position: relative;

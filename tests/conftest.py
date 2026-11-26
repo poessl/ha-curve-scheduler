@@ -38,6 +38,7 @@ def mock_frontend() -> Generator[None]:
     with (
         patch("homeassistant.components.frontend.async_setup", return_value=True),
         patch("custom_components.curve_scheduler.async_register_frontend"),
+        patch("custom_components.curve_scheduler.async_register_editor_panel"),
     ):
         yield
 

@@ -163,7 +163,7 @@ async def ws_preview(
         return
     schedule = msg.get("schedule")
     if schedule is not None:
-        issues = validate_schedule(schedule, runtime.minimum, runtime.maximum)
+        issues = validate_schedule(schedule, runtime.minimum, runtime.maximum, runtime.axis)
         if issues:
             connection.send_result(
                 msg["id"], {"ok": False, "errors": [i.as_dict() for i in issues]}

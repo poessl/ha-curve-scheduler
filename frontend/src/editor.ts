@@ -903,6 +903,8 @@ export class CurveSchedulerEditor extends LitElement {
           .min=${this.config.min}
           .max=${this.config.max}
           .step=${this.config.step}
+        .xLabelStep=${this.config.x_label_step ?? 0}
+        .yLabelStep=${this.config.y_label_step ?? 0}
           .unit=${this.config.unit}
           .language=${this.language}
           .color=${profile.color}

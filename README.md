@@ -7,7 +7,8 @@
 🇩🇪 [Deutsche Anleitung](README.de.md)
 
 **Curve Scheduler** calculates a value that changes over the day and writes it to a
-device at regular intervals. The typical use is the hot water circulation
+device at regular intervals. The target is optional: without one, use the calculated
+setpoint sensor in automations. The X-axis can also be a numeric sensor or month of year. The typical use is the hot water circulation
 temperature, but it works for any number: buffer tank, room temperature,
 pump speed, brightness …
 
@@ -58,10 +59,17 @@ automatically. You do **not** have to add a dashboard resource.
 | Setting | Meaning | Default |
 |---|---|---|
 | Name | e.g. "Circulation" | – |
-| Target | `number`, `input_number`, `climate` (attribute `temperature`) or `water_heater` | – |
-| Write interval | minutes between two writes (1–60) | 5 |
+| Target | Optional: `number`, `input_number`, `climate` (attribute `temperature`) or `water_heater` | – |
+| Output tick | seconds between input sampling and output updates (1–86400) | 300 |
+| X-axis source | time of day / month of year / sensor | time of day |
+| Input entity | numeric state from `sensor`, `input_number` or `number`; required for a sensor axis | – |
+| X minimum / maximum | numeric axis limits (upper limit exclusive when wrapping) | sensor: 0 / 100; month: 1 / 13 |
+| X point resolution | snapping for point movement; input samples are not rounded | sensor: 0.1; month: 0.01 |
+| Wrap input | periodic continuation; otherwise clamp out-of-range input | sensor: off; month: on |
 | Transition between points | step / linear / smooth / curve | curve |
 | Minimum / Maximum | allowed range; also the chart's axis | taken from the target, else 20 / 70 |
+| X-axis label interval | 0 = automatic; otherwise minutes for time of day, X units for numeric inputs | 0 |
+| Y-axis label interval | 0 = automatic; otherwise output units | 0 |
 | Rounding step | value is rounded before writing | 0.5 |
 | Unit | shown in the card | taken from the target |
 | Holiday source | optional: Workday binary sensor **or** a calendar (each event = day off) | – |
@@ -76,7 +84,32 @@ instances as you like (e.g. circulation and buffer tank). Two example plans,
 > weekly plan, set up the Workday sensor with all seven days as workdays, so
 > it only reports public holidays.
 
-### Add the card
+### Open the editor without a dashboard card
+
+After adding an integration instance, open **Curve Scheduler** in the sidebar.
+Choose a curve at the top; its full editor opens directly. **Add curve** starts
+setup for another instance (administrators only). **Curve settings** opens the
+integration page: use the **Configure** gear for the desired instance, confirm its
+axis type, then change its limits, point/label intervals, output tick and other
+parameters. Saving reloads that instance with its updated settings. This is also
+available through **Settings → Devices & services → Curve Scheduler → Configure**.
+The sidebar editor and device links remain available independently of Configure.
+**Refresh list** picks up newly
+added or reloaded instances. Each Curve Scheduler device also has a configuration
+link opening its own curve directly. The panel is removed when the last instance
+unloads and restored when an instance loads again.
+
+The panel uses the same editor and server-side storage as the dashboard card.
+Changes saved in either place appear in the other; revision checks prevent
+conflicting saves. The instance picker asks before discarding unsaved changes.
+Authenticated non-admin users can edit, matching the existing WebSocket policy.
+
+This uses HA's supported custom-panel API, also used by
+[Alarmo](https://github.com/nielsfaber/alarmo/blob/main/custom_components/alarmo/panel.py)
+and [HAIR](https://github.com/DAB-LABS/HAIR/blob/main/custom_components/hair/__init__.py).
+No extra frontend dependency or dashboard configuration is required.
+
+### Add the card (optional)
 
 Edit a dashboard → **Add card** → **Curve Scheduler**. In the card settings you can choose:
 
@@ -158,7 +191,7 @@ written value match.
 
 ## When is the value written?
 
-- every *write interval* (aligned to full minutes),
+- every *output tick* (seconds, measured from integration startup); legacy entries retain their minute interval until configured,
 - immediately on: Home Assistant start (as soon as the target is available), *Save*,
   changing the mode, a change of the holiday source, switching the instance on, and the *Apply now* button,
 - only if the value differs from the target's current value; periodic writes also respect the *write threshold*,
@@ -178,6 +211,65 @@ Each instance creates a device **Curve Scheduler &lt;name&gt;** with:
 | `button.<name>_apply_now` | write now |
 
 Mode, switch and all plans survive restarts.
+
+## Numeric axes and a sensor-input example
+
+Choose **Sensor value** or **Month of year** during setup. These modes use one
+numeric X/Y curve instead of the daily/weekly profile selection. The card shows
+numeric inputs and outputs, a draggable curve and number fields. Edit points and
+press **Save**; changes persist on the HA server. The time-of-day editor and its
+profiles are retained separately, so switching axis modes does not erase them.
+Manual profile overrides, holidays and weekday selection apply only to time-of-day
+mode. Numeric mode exposes the setpoint sensor, enable switch and Apply now button.
+
+The output tick samples the latest input state and updates the output sensor,
+even without a target. Numeric input state changes also recalculate the output immediately. Startup,
+Save and Apply now also evaluate immediately. Target writes remain subject to
+rounding, enable state and the existing threshold. No target means no device writes.
+An unknown, unavailable, nonnumeric or nonfinite input makes the output unavailable
+and prevents device writes until a valid input is sampled. This reads the numeric **state** of a `sensor`, `input_number` or `number` entity,
+not its attributes. Numeric helpers can be selected directly without a template sensor.
+
+Without wrapping, inputs clamp to the configured X limits and the curve holds its
+first/last value outside the point range. With wrapping, the period is `x_max -
+x_min`: the upper limit maps to the lower limit and negative inputs wrap too.
+Interpolation continues from the last point to the first point of the next cycle.
+Do not place a point at the exclusive upper wrap limit. Point coordinates must be
+finite, unique and ascending. Fields allow exact numeric coordinates; X resolution
+controls dragging/snapping. A maximum of 48 points applies.
+
+Axis label intervals are configured under **Configure**, separately from point
+snapping and output rounding. For example, X interval **180** gives three-hour
+labels on a time-of-day curve; X interval **5** gives labels five input units apart
+on a numeric curve. Y interval **10** labels every ten output units. Intervals
+producing more than 100 divisions are rejected. While dragging a point, dashed
+guides connect it to both axes; numeric curves also show its axis coordinates.
+
+The **month of year** preset is continuous: January starts at 1, February at 2,
+December at 12, and the next January at 13 wraps to 1. The fraction within a month
+uses that month's actual length and HA's local wall-clock time. Time-of-day mode
+retains its existing midnight-aware interpolation and five-minute point grid.
+Numeric axis limits/resolution/wrapping are shown for the numeric presets. Configure first asks for the axis source, then shows only its applicable settings.
+When changing between numeric presets, review the bounds and wrapping explicitly;
+existing point coordinates are preserved, not rescaled. Bounds that exclude saved
+points are rejected; edit the points first.
+
+For a runnable input, merge [examples/sensor-input.yaml](examples/sensor-input.yaml)
+into your isolated development configuration and restart HA. Then:
+
+1. Add Curve Scheduler named **Heating curve**, select **Sensor value**, leave
+   **Target** empty, and choose `sensor.curve_example_outdoor_temperature`.
+2. Set X limits to **-20 / 40**, X resolution **0.5**, wrapping **off**,
+   output limits **20 / 70**, rounding **0.5**, unit **°C**, interpolation **linear**,
+   and output tick **10 seconds**.
+3. In the card edit the two points to **(-20, 70)** and **(40, 20)** and save.
+4. Change `input_number.curve_outdoor_temperature`. At input **10**, the output
+   `sensor.heating_curve_setpoint` is **45 °C**. At input **-20**, it is **70 °C**;
+   at input **40**, it is **20 °C**, immediately after the input changes.
+
+You can use an existing outdoor-temperature, power, humidity or other numeric
+sensor instead. Add a target later only if Curve Scheduler should write directly
+to a supported device.
 
 ## Actions (services)
 
@@ -237,6 +329,20 @@ npm run demo          # demo page with a fake backend on http://localhost:8765/d
 # shared interpolation vectors (after changing the algorithm)
 python scripts/generate_vectors.py
 ```
+
+For the local Compose instance (Home Assistant 2026.11.0):
+
+```bash
+mkdir -p dev/config
+# First run only; preserve existing runtime configuration on later runs:
+cp -n config/configuration.yaml dev/config/configuration.yaml
+docker compose up -d
+```
+
+Open <http://localhost:8124>. This uses port 8124 to coexist with the separate
+Schedule2D dev instance on 8123. Override with `CURVE_SCHEDULER_PORT` if needed.
+The integration and built card are mounted from this checkout; restart the service
+after backend changes. Private HA data stays in ignored `dev/config/`.
 
 The repository contains a devcontainer. `scripts/develop` starts a local Home
 Assistant with the integration on port 8123 (see `config/configuration.yaml`).

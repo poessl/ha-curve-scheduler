@@ -1,6 +1,12 @@
 /** Card translations (German and English). Plain words, no technical terms. */
 
 const en = {
+  "panel.instance": "Curve",
+  "panel.refresh": "Refresh list",
+  "panel.add": "Add curve",
+  "panel.settings": "Curve settings",
+  "panel.empty": "No curves are loaded. Add a Curve Scheduler instance to get started.",
+  "panel.not_found": "This curve is not loaded. Choose another curve or refresh the list.",
   "card.name": "Time profile",
   "card.description": "Shows today's plan and lets everyone edit the daily plans.",
   "card.loading": "Loading…",
@@ -139,6 +145,12 @@ const en = {
 export type TranslationKey = keyof typeof en;
 
 const de: Record<TranslationKey, string> = {
+  "panel.instance": "Kurve",
+  "panel.refresh": "Liste aktualisieren",
+  "panel.add": "Kurve hinzufügen",
+  "panel.settings": "Kurveneinstellungen",
+  "panel.empty": "Keine Kurven geladen. Zuerst eine Curve-Scheduler-Instanz hinzufügen.",
+  "panel.not_found": "Diese Kurve ist nicht geladen. Eine andere wählen oder die Liste aktualisieren.",
   "card.name": "Zeitprofil",
   "card.description": "Zeigt den heutigen Plan und lässt alle die Tagespläne bearbeiten.",
   "card.loading": "Wird geladen …",

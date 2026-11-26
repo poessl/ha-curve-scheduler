@@ -1,9 +1,16 @@
 {
   "domain": "curve_scheduler",
   "name": "Curve Scheduler",
-  "codeowners": ["@timzifer"],
+  "codeowners": [
+    "@timzifer"
+  ],
   "config_flow": true,
-  "dependencies": ["frontend", "http", "websocket_api"],
+  "dependencies": [
+    "frontend",
+    "http",
+    "websocket_api",
+    "panel_custom"
+  ],
   "documentation": "https://github.com/timzifer/ha-curve-scheduler",
   "integration_type": "service",
   "iot_class": "calculated",

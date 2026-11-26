@@ -41,7 +41,7 @@ DEFAULT_COLORS = ["#e67e22", "#27ae60", "#2980b9", "#8e44ad", "#c0392b", "#16a08
 
 # Fields of the schedule that the editor may change (everything except
 # runtime state such as ``enabled`` and ``override``).
-EDITABLE_KEYS = ("profiles", "week", "holiday_profile", "exceptions", "auto_cleanup")
+EDITABLE_KEYS = ("profiles", "week", "holiday_profile", "exceptions", "auto_cleanup", "curve")
 
 
 @dataclass(slots=True)
@@ -193,12 +193,51 @@ def _valid_date(value: Any) -> date | None:
         return None
 
 
-def validate_schedule(data: Any, minimum: float, maximum: float) -> list[ValidationIssue]:
+def validate_schedule(
+    data: Any, minimum: float, maximum: float, axis: dict[str, Any] | None = None
+) -> list[ValidationIssue]:
     """Validate the editable part of a schedule and return all issues."""
     issues: list[ValidationIssue] = []
     if not isinstance(data, Mapping):
         _issue(issues, "invalid_format", "")
         return issues
+
+    if "curve" in data or (axis and axis["source"] != "time_of_day"):
+        points = data.get("curve")
+        if not isinstance(points, list) or not MIN_POINTS <= len(points) <= MAX_POINTS:
+            _issue(issues, "invalid_curve", "curve")
+        else:
+            previous = -math.inf
+            for index, point in enumerate(points):
+                path = f"curve.{index}"
+                if not isinstance(point, Mapping):
+                    _issue(issues, "invalid_curve", path)
+                    continue
+                x, value = point.get("x"), point.get("v")
+                if (
+                    isinstance(x, bool)
+                    or not isinstance(x, (int, float))
+                    or not math.isfinite(x)
+                    or (
+                        axis
+                        and axis["source"] != "time_of_day"
+                        and (
+                            not axis["min"] <= x <= axis["max"]
+                            or (axis["wrap"] and x == axis["max"])
+                        )
+                    )
+                    or x <= previous
+                ):
+                    _issue(issues, "invalid_x", path)
+                else:
+                    previous = x
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                    or not minimum <= value <= maximum
+                ):
+                    _issue(issues, "invalid_value", path)
 
     profiles = data.get("profiles")
     if not isinstance(profiles, Mapping) or not profiles:
@@ -230,7 +269,15 @@ def validate_schedule(data: Any, minimum: float, maximum: float) -> list[Validat
         color = profile.get("color")
         if not isinstance(color, str) or not COLOR_RE.match(color):
             _issue(issues, "invalid_color", f"{path}.color")
-        _validate_points(profile.get("points"), f"{path}.points", minimum, maximum, issues)
+        # Daily profiles are retained but inactive for a numeric input axis.
+        numeric = axis is not None and axis["source"] != "time_of_day"
+        _validate_points(
+            profile.get("points"),
+            f"{path}.points",
+            -math.inf if numeric else minimum,
+            math.inf if numeric else maximum,
+            issues,
+        )
 
     def check_reference(value: Any, path: str) -> None:
         if not isinstance(value, str) or value not in profiles:
@@ -295,10 +342,14 @@ def profile_usages(data: Mapping[str, Any], profile_id: str) -> list[str]:
 
 
 def validate_update(
-    old: Mapping[str, Any], new: Any, minimum: float, maximum: float
+    old: Mapping[str, Any],
+    new: Any,
+    minimum: float,
+    maximum: float,
+    axis: dict[str, Any] | None = None,
 ) -> list[ValidationIssue]:
     """Validate new schedule data, reporting deleted-but-used profiles clearly."""
-    issues = validate_schedule(new, minimum, maximum)
+    issues = validate_schedule(new, minimum, maximum, axis)
     if not isinstance(new, Mapping) or not isinstance(new.get("profiles"), Mapping):
         return issues
     removed = [pid for pid in old.get("profiles", {}) if pid not in new["profiles"]]
@@ -337,6 +388,11 @@ def normalize_schedule(data: Mapping[str, Any]) -> dict[str, Any]:
         )
     exceptions.sort(key=lambda item: (item["from"], item["to"]))
     return {
+        **(
+            {"curve": [{"x": float(p["x"]), "v": float(p["v"])} for p in data["curve"]]}
+            if "curve" in data
+            else {}
+        ),
         "profiles": {
             profile_id: {
                 "name": profile["name"].strip(),

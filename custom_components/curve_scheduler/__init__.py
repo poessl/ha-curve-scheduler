@@ -9,7 +9,11 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
-from .frontend import async_register_frontend
+from .frontend import (
+    async_register_editor_panel,
+    async_register_frontend,
+    async_unregister_editor_panel,
+)
 from .runtime import CurveSchedulerRuntime
 from .services import async_register_services
 from .store import create_store
@@ -37,6 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: CurveSchedulerConfigEntr
     entry.runtime_data = runtime
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await runtime.async_start()
+    await async_register_editor_panel(hass, entry.entry_id)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
@@ -44,7 +49,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: CurveSchedulerConfigEntr
 async def async_unload_entry(hass: HomeAssistant, entry: CurveSchedulerConfigEntry) -> bool:
     """Unload an instance."""
     await entry.runtime_data.async_stop()
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded:
+        async_unregister_editor_panel(hass, entry.entry_id)
+    return unloaded
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: CurveSchedulerConfigEntry) -> None:

@@ -2,38 +2,51 @@
   "config": {
     "step": {
       "user": {
-        "title": "New time profile",
-        "description": "A time profile calculates a value that changes over the day (for example a hot water temperature) and writes it to a device regularly.",
+        "title": "New curve",
+        "description": "A curve calculates an output from time of day, month of year or sensor values. A target is optional.",
         "data": {
           "name": "Name",
-          "target_entity": "Target"
+          "target_entity": "Target",
+          "axis_source": "X-axis source"
         },
         "data_description": {
           "name": "For example \"Circulation\".",
-          "target_entity": "The number, input number, thermostat or water heater that receives the value."
+          "target_entity": "Optional. Without a target the calculated output is available as a sensor."
         }
       },
       "settings": {
         "title": "Settings for {name}",
         "data": {
-          "interval": "Write interval",
           "interpolation": "Transition between points",
           "min_value": "Minimum",
           "max_value": "Maximum",
           "step": "Rounding step",
           "unit": "Unit",
           "holiday_source": "Holiday source",
-          "write_threshold": "Write threshold"
+          "write_threshold": "Write threshold",
+          "output_tick_seconds": "Output tick (seconds)",
+          "input_entity": "Input entity",
+          "x_min": "X minimum",
+          "x_max": "X maximum",
+          "x_step": "X point resolution",
+          "x_wrap": "Wrap input",
+          "x_label_step": "X-axis label interval",
+          "y_label_step": "Y-axis label interval"
         },
         "data_description": {
-          "interval": "How often the value is written (minutes).",
           "interpolation": "How the value changes between two points.",
           "min_value": "Lowest allowed value. Also the bottom of the chart.",
           "max_value": "Highest allowed value. Also the top of the chart.",
           "step": "The value is rounded to this step before writing, e.g. 0.5.",
           "unit": "Shown in the card, e.g. °C.",
           "holiday_source": "Optional: a Workday binary sensor or a calendar (every event is a day off).",
-          "write_threshold": "Only write when the value changed by at least this amount (0 = on every change)."
+          "write_threshold": "Only write when the value changed by at least this amount (0 = on every change).",
+          "output_tick_seconds": "Sample input and update the output every 1–86400 seconds; a target is optional.",
+          "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
+          "x_step": "Point movement resolution; the sampled input is not rounded.",
+          "target_entity": "Optional. Without a target the calculated output is available as a sensor.",
+          "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
+          "y_label_step": "0 = automatic; otherwise the spacing in output units."
         }
       }
     },
@@ -41,7 +54,14 @@
       "name_required": "Please enter a name.",
       "max_not_greater": "The maximum must be greater than the minimum.",
       "step_positive": "The rounding step must be greater than 0.",
-      "threshold_negative": "The threshold must not be negative."
+      "threshold_negative": "The threshold must not be negative.",
+      "invalid_tick": "Tick must be between 1 and 86400 seconds.",
+      "invalid_axis": "Enter finite ascending X limits and a positive resolution no larger than the range.",
+      "input_required": "Choose a sensor, input number or number entity.",
+      "invalid_number": "Enter a finite number.",
+      "curve_out_of_range": "Saved points are outside these limits. Edit the curve before reducing the limits.",
+      "invalid_label_step": "Use 0 for automatic labels or a positive spacing producing at most 100 intervals.",
+      "input_is_target": "Input and target must differ to avoid an output feeding back into its own input."
     },
     "abort": {
       "already_configured": "This target already has a time profile."
@@ -50,28 +70,45 @@
   "options": {
     "step": {
       "init": {
+        "title": "Choose X-axis",
+        "data": {
+          "axis_source": "X-axis source"
+        }
+      },
+      "settings": {
         "title": "Settings",
         "data": {
           "target_entity": "Target",
-          "interval": "Write interval",
           "interpolation": "Transition between points",
           "min_value": "Minimum",
           "max_value": "Maximum",
           "step": "Rounding step",
           "unit": "Unit",
           "holiday_source": "Holiday source",
-          "write_threshold": "Write threshold"
+          "write_threshold": "Write threshold",
+          "output_tick_seconds": "Output tick (seconds)",
+          "input_entity": "Input entity",
+          "x_min": "X minimum",
+          "x_max": "X maximum",
+          "x_step": "X point resolution",
+          "x_wrap": "Wrap input",
+          "x_label_step": "X-axis label interval",
+          "y_label_step": "Y-axis label interval"
         },
         "data_description": {
-          "target_entity": "The number, input number, thermostat or water heater that receives the value.",
-          "interval": "How often the value is written (minutes).",
+          "target_entity": "Optional. Without a target the calculated output is available as a sensor.",
           "interpolation": "How the value changes between two points.",
           "min_value": "Lowest allowed value. Also the bottom of the chart.",
           "max_value": "Highest allowed value. Also the top of the chart.",
           "step": "The value is rounded to this step before writing, e.g. 0.5.",
           "unit": "Shown in the card, e.g. °C.",
           "holiday_source": "Optional: a Workday binary sensor or a calendar (every event is a day off).",
-          "write_threshold": "Only write when the value changed by at least this amount (0 = on every change)."
+          "write_threshold": "Only write when the value changed by at least this amount (0 = on every change).",
+          "output_tick_seconds": "Sample input and update the output every 1–86400 seconds; a target is optional.",
+          "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
+          "x_step": "Point movement resolution; the sampled input is not rounded.",
+          "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
+          "y_label_step": "0 = automatic; otherwise the spacing in output units."
         }
       }
     },
@@ -79,7 +116,14 @@
       "max_not_greater": "The maximum must be greater than the minimum.",
       "step_positive": "The rounding step must be greater than 0.",
       "threshold_negative": "The threshold must not be negative.",
-      "target_in_use": "This target already has another time profile."
+      "target_in_use": "This target already has another time profile.",
+      "invalid_tick": "Tick must be between 1 and 86400 seconds.",
+      "invalid_axis": "Enter finite ascending X limits and a positive resolution no larger than the range.",
+      "input_required": "Choose a sensor, input number or number entity.",
+      "invalid_number": "Enter a finite number.",
+      "curve_out_of_range": "Saved points are outside these limits. Edit the curve before reducing the limits.",
+      "invalid_label_step": "Use 0 for automatic labels or a positive spacing producing at most 100 intervals.",
+      "input_is_target": "Input and target must differ to avoid an output feeding back into its own input."
     }
   },
   "selector": {
@@ -90,6 +134,13 @@
         "smooth": "Smooth (soft start and end)",
         "curve": "Curve (smooth, never overshoots)"
       }
+    },
+    "axis_source": {
+      "options": {
+        "time_of_day": "Time of day",
+        "month_of_year": "Month of year",
+        "sensor": "Sensor value"
+      }
     }
   },
   "entity": {
@@ -97,28 +148,48 @@
       "setpoint": {
         "name": "Setpoint",
         "state_attributes": {
-          "profile": { "name": "Profile" },
-          "profile_id": { "name": "Profile ID" },
+          "profile": {
+            "name": "Profile"
+          },
+          "profile_id": {
+            "name": "Profile ID"
+          },
           "reason": {
             "name": "Reason",
             "state": {
               "weekday": "Weekday",
               "holiday": "Holiday",
               "exception": "Exception",
-              "override": "Manual"
+              "override": "Manual",
+              "input": "Input curve"
             }
           },
-          "next_point_time": { "name": "Next point" },
-          "next_point_value": { "name": "Next point value" },
-          "value_in_1h": { "name": "Value in 1 hour" },
-          "raw_value": { "name": "Unrounded value" },
-          "enabled": { "name": "Active" }
+          "next_point_time": {
+            "name": "Next point"
+          },
+          "next_point_value": {
+            "name": "Next point value"
+          },
+          "value_in_1h": {
+            "name": "Value in 1 hour"
+          },
+          "raw_value": {
+            "name": "Unrounded value"
+          },
+          "enabled": {
+            "name": "Active"
+          },
+          "input_value": {
+            "name": "Input value"
+          }
         }
       },
       "profile": {
         "name": "Profile",
         "state_attributes": {
-          "profile_id": { "name": "Profile ID" },
+          "profile_id": {
+            "name": "Profile ID"
+          },
           "reason": {
             "name": "Reason",
             "state": {
@@ -132,67 +203,122 @@
       }
     },
     "switch": {
-      "active": { "name": "Active" }
+      "active": {
+        "name": "Active"
+      }
     },
     "select": {
       "mode": {
         "name": "Mode",
-        "state": { "auto": "Automatic" }
+        "state": {
+          "auto": "Automatic"
+        }
       }
     },
     "button": {
-      "apply_now": { "name": "Apply now" }
+      "apply_now": {
+        "name": "Apply now"
+      }
     }
   },
   "exceptions": {
-    "entry_not_found": { "message": "Time profile instance {entry_id} was not found or is not loaded." },
-    "unknown_profile": { "message": "There is no profile named \"{profile}\"." },
-    "until_in_past": { "message": "The end time must be in the future." },
-    "date_range_reversed": { "message": "The end date must not be before the start date." },
-    "invalid_schedule": { "message": "The schedule is invalid ({problem})." }
+    "entry_not_found": {
+      "message": "Time profile instance {entry_id} was not found or is not loaded."
+    },
+    "unknown_profile": {
+      "message": "There is no profile named \"{profile}\"."
+    },
+    "until_in_past": {
+      "message": "The end time must be in the future."
+    },
+    "date_range_reversed": {
+      "message": "The end date must not be before the start date."
+    },
+    "invalid_schedule": {
+      "message": "The schedule is invalid ({problem})."
+    }
   },
   "services": {
     "set_override": {
       "name": "Set manual profile",
       "description": "Use one profile regardless of the weekly plan, optionally until a point in time.",
       "fields": {
-        "config_entry_id": { "name": "Time profile", "description": "The time profile instance." },
-        "profile": { "name": "Profile", "description": "Name of the profile." },
-        "until": { "name": "Until", "description": "When to return to automatic mode. Leave empty to keep the profile until it is reset." }
+        "config_entry_id": {
+          "name": "Time profile",
+          "description": "The time profile instance."
+        },
+        "profile": {
+          "name": "Profile",
+          "description": "Name of the profile."
+        },
+        "until": {
+          "name": "Until",
+          "description": "When to return to automatic mode. Leave empty to keep the profile until it is reset."
+        }
       }
     },
     "clear_override": {
       "name": "Back to automatic",
       "description": "End a manual profile and follow the weekly plan again.",
       "fields": {
-        "config_entry_id": { "name": "Time profile", "description": "The time profile instance." }
+        "config_entry_id": {
+          "name": "Time profile",
+          "description": "The time profile instance."
+        }
       }
     },
     "add_exception": {
       "name": "Add exception",
       "description": "Use a profile for a date range, for example a holiday.",
       "fields": {
-        "config_entry_id": { "name": "Time profile", "description": "The time profile instance." },
-        "from": { "name": "From", "description": "First day." },
-        "to": { "name": "To", "description": "Last day (inclusive). Defaults to the first day." },
-        "profile": { "name": "Profile", "description": "Name of the profile." },
-        "note": { "name": "Note", "description": "Optional note, e.g. \"Summer holiday\"." }
+        "config_entry_id": {
+          "name": "Time profile",
+          "description": "The time profile instance."
+        },
+        "from": {
+          "name": "From",
+          "description": "First day."
+        },
+        "to": {
+          "name": "To",
+          "description": "Last day (inclusive). Defaults to the first day."
+        },
+        "profile": {
+          "name": "Profile",
+          "description": "Name of the profile."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional note, e.g. \"Summer holiday\"."
+        }
       }
     },
     "remove_exception": {
       "name": "Remove exception",
       "description": "Remove an exception by its ID or all exceptions covering a date.",
       "fields": {
-        "config_entry_id": { "name": "Time profile", "description": "The time profile instance." },
-        "exception_id": { "name": "Exception ID", "description": "ID returned by add exception." },
-        "date": { "name": "Date", "description": "Remove all exceptions that include this day." }
+        "config_entry_id": {
+          "name": "Time profile",
+          "description": "The time profile instance."
+        },
+        "exception_id": {
+          "name": "Exception ID",
+          "description": "ID returned by add exception."
+        },
+        "date": {
+          "name": "Date",
+          "description": "Remove all exceptions that include this day."
+        }
       }
     },
     "apply_now": {
       "name": "Apply now",
       "description": "Calculate and write the current value immediately.",
       "fields": {
-        "config_entry_id": { "name": "Time profile", "description": "The time profile instance." }
+        "config_entry_id": {
+          "name": "Time profile",
+          "description": "The time profile instance."
+        }
       }
     }
   }

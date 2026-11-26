@@ -17,7 +17,9 @@ import { addDays, profilePoints, type InstanceData } from "./model";
 import { sharedStyles } from "./styles";
 import "./curve";
 import "./editor";
+import "./numeric-editor";
 import type { CurveSchedulerEditor } from "./editor";
+import type { NumericEditor } from "./numeric-editor";
 
 export interface CurveSchedulerCardConfig {
   type: string;
@@ -184,6 +186,13 @@ export class CurveSchedulerCard extends LitElement {
     return this.renderRoot.querySelector("curve-scheduler-editor");
   }
 
+  /** Shared guard for the standalone panel's instance picker. */
+  confirmLeave(): boolean {
+    if (this.editor) return this.editor.confirmLeave();
+    const numeric = this.renderRoot.querySelector<NumericEditor>("curve-scheduler-numeric-editor");
+    return numeric?.confirmLeave(this.t("editor.confirm_leave")) ?? true;
+  }
+
   private toggleEditor(): void {
     if (this._editorOpen) {
       if (this.editor && !this.editor.confirmLeave()) {
@@ -262,7 +271,7 @@ export class CurveSchedulerCard extends LitElement {
       : null;
     const parts = [
       this.t("today.title", { profile: profile?.name ?? "?" }),
-      this.t("today.now", { value: this.fmt(state.value) }),
+      this.t("today.now", { value: state.value === null ? "—" : this.fmt(state.value) }),
     ];
     if (state.next_point) {
       parts.push(
@@ -296,6 +305,8 @@ export class CurveSchedulerCard extends LitElement {
         .min=${config.min}
         .max=${config.max}
         .step=${config.step}
+        .xLabelStep=${config.x_label_step ?? 0}
+        .yLabelStep=${config.y_label_step ?? 0}
         .unit=${config.unit}
         .language=${this.language}
         .color=${profile?.color ?? "var(--primary-color)"}
@@ -305,7 +316,7 @@ export class CurveSchedulerCard extends LitElement {
         .showContinuation=${false}
       ></curve-scheduler-curve>
       ${state.enabled ? nothing : html`<div class="notice warning">${this.t("today.disabled")}</div>`}
-      ${state.enabled && !state.target_available
+      ${state.enabled && config.target && !state.target_available
         ? html`<div class="notice warning">${this.t("today.unavailable")}</div>`
         : nothing}
       <div class="actions">
@@ -390,7 +401,9 @@ export class CurveSchedulerCard extends LitElement {
       content = html`<div class="muted">${this.t("card.loading")}</div>`;
     } else {
       const showEditor = this.canEdit && (this._config.view === "full" || this._editorOpen);
-      content = html`
+      content = this._data.config.axis && this._data.config.axis.source !== "time_of_day" ? html`
+        <curve-scheduler-numeric-editor .hass=${this.hass} .data=${this._data} .editable=${this.canEdit} .language=${this.language} .editing=${this._config.view === "full"}></curve-scheduler-numeric-editor>
+      ` : html`
         ${this.renderToday(this._data)}
         ${showEditor
           ? html`<curve-scheduler-editor

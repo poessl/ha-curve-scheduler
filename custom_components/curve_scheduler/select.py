@@ -20,7 +20,8 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up the select."""
-    async_add_entities([ModeSelect(entry.runtime_data)])
+    if entry.runtime_data.axis["source"] == "time_of_day":
+        async_add_entities([ModeSelect(entry.runtime_data)])
 
 
 class ModeSelect(CurveSchedulerEntity, SelectEntity):

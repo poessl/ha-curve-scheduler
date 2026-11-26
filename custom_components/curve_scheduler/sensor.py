@@ -23,7 +23,12 @@ async def async_setup_entry(
 ) -> None:
     """Set up the sensors."""
     runtime = entry.runtime_data
-    async_add_entities([SetpointSensor(runtime), ProfileSensor(runtime)])
+    async_add_entities(
+        [
+            SetpointSensor(runtime),
+            *([ProfileSensor(runtime)] if runtime.axis["source"] == "time_of_day" else []),
+        ]
+    )
 
 
 class SetpointSensor(CurveSchedulerEntity, SensorEntity):
@@ -40,6 +45,11 @@ class SetpointSensor(CurveSchedulerEntity, SensorEntity):
         self._attr_suggested_display_precision = _precision(runtime.step)
 
     @property
+    def available(self) -> bool:
+        """Do not publish stale output when the input is invalid."""
+        return self.runtime.current is not None and self.runtime.current.value is not None
+
+    @property
     def native_value(self) -> float | None:
         """Return the computed value."""
         current = self.runtime.current
@@ -51,9 +61,16 @@ class SetpointSensor(CurveSchedulerEntity, SensorEntity):
         current = self.runtime.current
         if current is None:
             return {}
+        if self.runtime.axis["source"] != "time_of_day":
+            return {
+                "input_value": self.runtime.state_dict()["input_value"],
+                "raw_value": current.raw,
+                "enabled": self.runtime.enabled,
+            }
         profile = self.runtime.data["profiles"].get(current.profile_id, {})
         in_one_hour = self.runtime.state_dict()["value_in_1h"]
         return {
+            "input_value": self.runtime.state_dict()["input_value"],
             "profile": profile.get("name"),
             "profile_id": current.profile_id,
             "reason": current.reason,
@@ -62,7 +79,7 @@ class SetpointSensor(CurveSchedulerEntity, SensorEntity):
             ),
             "next_point_value": current.next_point_value,
             "value_in_1h": in_one_hour,
-            "raw_value": round(current.raw, 4),
+            "raw_value": round(current.raw, 4) if current.raw is not None else None,
             "enabled": self.runtime.enabled,
         }
 
