@@ -1,7 +1,24 @@
-# Curve Scheduler – daily setpoint curves for Home Assistant
+# Curve Scheduler
 
-[![Validate](https://github.com/timzifer/ha-curve-scheduler/actions/workflows/validate.yml/badge.svg)](https://github.com/timzifer/ha-curve-scheduler/actions/workflows/validate.yml)
-[![CI](https://github.com/timzifer/ha-curve-scheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/timzifer/ha-curve-scheduler/actions/workflows/ci.yml)
+Home Assistant integration: curve schedules with a visual, touch-friendly editor card
+
+> **Fork notice:** This is an independently maintained fork of
+> [timzifer/ha-curve-scheduler](https://github.com/timzifer/ha-curve-scheduler),
+> maintained by Jonas Poessl ([@poessl](https://github.com/poessl)).
+> Compared with the upstream version this fork was based on, it adds:
+>
+> - Sensor and month-of-year inputs, optional targets, and configurable output ticks; numeric axes support clamping or wrapping.
+> - Plans in every input mode, selected through ordered activations with multiple weekdays or a holiday calendar/Workday sensor. Date exceptions take precedence.
+> - A standalone sidebar editor and a shared graph with touch and keyboard editing.
+> - Animated activation reordering with buttons, drag-and-drop previews, drop zones, and reduced-motion support.
+> - Whole-curve cloning, including saved configuration and all plans, activations, and exceptions. Clones start disabled.
+> - Updated development tooling and CI for Python 3.14.2+ and Home Assistant 2026.11.3.
+>
+> **Requires Home Assistant 2026.11.3 or newer.** The integration domain remains
+> `curve_scheduler`: install this fork in place of the original, not alongside it.
+
+[![Validate](https://github.com/poessl/ha-curve-scheduler/actions/workflows/validate.yml/badge.svg)](https://github.com/poessl/ha-curve-scheduler/actions/workflows/validate.yml)
+[![CI](https://github.com/poessl/ha-curve-scheduler/actions/workflows/ci.yml/badge.svg)](https://github.com/poessl/ha-curve-scheduler/actions/workflows/ci.yml)
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
 
 🇩🇪 [Deutsche Anleitung](README.de.md)
@@ -44,7 +61,7 @@ or the desktop, without YAML, automations, developer tools or admin rights.
 ### HACS (recommended)
 
 1. Open **HACS** → menu (⋮) → **Custom repositories**.
-2. Add `https://github.com/timzifer/ha-curve-scheduler` with the category **Integration**.
+2. Add `https://github.com/poessl/ha-curve-scheduler` with the category **Integration**.
 3. Search for **Curve Scheduler**, install it, then restart Home Assistant.
 
 ### Manual

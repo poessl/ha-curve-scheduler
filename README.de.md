@@ -1,4 +1,21 @@
-# Curve Scheduler – Tagesverläufe für Sollwerte in Home Assistant
+# Curve Scheduler
+
+Home-Assistant-Integration: Kurvenpläne mit einer visuellen, touchfreundlichen Editor-Karte
+
+> **Hinweis zum Fork:** Dieses Repository ist ein unabhängig gepflegter Fork von
+> [timzifer/ha-curve-scheduler](https://github.com/timzifer/ha-curve-scheduler),
+> betreut von Jonas Poessl ([@poessl](https://github.com/poessl)).
+> Gegenüber der ursprünglichen Version, auf der dieser Fork basiert, bietet er:
+>
+> - Sensorwerte und Jahresmonate als Eingänge, optionale Ziele und einstellbare Ausgangsintervalle; numerische Achsen können begrenzt oder umlaufend sein.
+> - Pläne für alle Eingangsarten, ausgewählt durch geordnete Aktivierungen mit mehreren Wochentagen oder einem Feiertagskalender/Workday-Sensor. Datumsausnahmen haben Vorrang.
+> - Einen eigenständigen Seitenleisten-Editor und ein gemeinsames Diagramm mit Touch- und Tastaturbedienung.
+> - Animiertes Umsortieren von Aktivierungen per Schaltflächen oder Drag-and-drop mit Vorschau, Ablagezonen und Unterstützung für reduzierte Bewegung.
+> - Klonen ganzer Kurven samt gespeicherter Konfiguration, allen Plänen, Aktivierungen und Ausnahmen. Kopien starten deaktiviert.
+> - Aktualisierte Entwicklungswerkzeuge und CI für Python 3.14.2+ und Home Assistant 2026.11.3.
+>
+> **Erfordert Home Assistant ab 2026.11.3.** Die Integrations-Domain bleibt
+> `curve_scheduler`: Dieser Fork ersetzt das Original und wird nicht parallel dazu installiert.
 
 🇬🇧 [English version](README.md)
 
@@ -40,7 +57,7 @@ Entwicklerwerkzeuge oder Admin-Rechte.
 ### HACS (empfohlen)
 
 1. **HACS** öffnen → Menü (⋮) → **Benutzerdefinierte Repositories**.
-2. `https://github.com/timzifer/ha-curve-scheduler` mit dem Typ **Integration** hinzufügen.
+2. `https://github.com/poessl/ha-curve-scheduler` mit dem Typ **Integration** hinzufügen.
 3. Nach **Curve Scheduler** suchen, installieren und Home Assistant neu starten.
 
 ### Manuell

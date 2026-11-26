@@ -1,7 +1,7 @@
 [project]
 name = "curve_scheduler"
 version = "0.2.0"
-description = "Home Assistant integration: daily setpoint curves with a visual editor card"
+description = "Home Assistant integration: curve schedules with a visual, touch-friendly editor card"
 requires-python = ">=3.14.2,<3.15"
 license = "MIT"
 maintainers = [{ name = "Jonas Poessl" }]
