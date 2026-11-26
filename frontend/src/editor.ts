@@ -121,13 +121,32 @@ export class CurveSchedulerEditor extends LitElement {
   connectedCallback(): void {
     super.connectedCallback();
     window.addEventListener("beforeunload", this.onBeforeUnload);
+    this.tabIndex = 0;
+    this.addEventListener("keydown", this.onPointKeyDown);
   }
 
   disconnectedCallback(): void {
     super.disconnectedCallback();
     window.removeEventListener("beforeunload", this.onBeforeUnload);
+    this.removeEventListener("keydown", this.onPointKeyDown);
     clearTimeout(this.messageTimer);
   }
+
+  private onPointKeyDown = (event: KeyboardEvent): void => {
+    if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || this._saving || this._tab !== "profiles") return;
+    const path = event.composedPath();
+    const typing = path.some(el => el instanceof HTMLElement && (el.matches("input, textarea, select") || el.isContentEditable));
+    if (event.key === "Escape") {
+      this._selected = null;
+    } else if (!typing && (event.key === "Delete" || event.key === "Backspace") && this._selected !== null) {
+      this.deletePoint(this._selected);
+      this.focus();
+    } else if (!typing && event.code === "Space" && !event.repeat && !path.some(el => el instanceof HTMLElement && el.matches("button, a"))) {
+      this.addPoint();
+    } else return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
   protected willUpdate(changed: PropertyValues<this>): void {
     if (changed.has("language")) {

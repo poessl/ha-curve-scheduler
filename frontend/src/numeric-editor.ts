@@ -12,7 +12,7 @@ const labels = {
 };
 
 export class NumericEditor extends LitElement {
-  static properties = { drag: { state: true }, hass: { attribute: false }, data: { attribute: false }, editable: { type: Boolean }, language: {}, points: { state: true }, editing: { state: true }, message: { state: true }, saving: { state: true } };
+  static properties = { selected: { state: true }, drag: { state: true }, hass: { attribute: false }, data: { attribute: false }, editable: { type: Boolean }, language: {}, points: { state: true }, editing: { state: true }, message: { state: true }, saving: { state: true } };
   declare hass: HomeAssistant;
   declare data: InstanceData;
   declare editable: boolean;
@@ -21,6 +21,7 @@ export class NumericEditor extends LitElement {
   declare editing: boolean;
   declare message: string;
   declare saving: boolean;
+  private selected: number | null = null;
   private revision = 0;
   private base = "";
   private drag: number | null = null;
@@ -30,14 +31,32 @@ export class NumericEditor extends LitElement {
   private beforeUnload = (event: BeforeUnloadEvent) => {
     if (this.dirty) { event.preventDefault(); event.returnValue = ""; }
   };
-  connectedCallback() { super.connectedCallback(); window.addEventListener("beforeunload", this.beforeUnload); }
-  disconnectedCallback() { window.removeEventListener("beforeunload", this.beforeUnload); super.disconnectedCallback(); }
+  connectedCallback() { super.connectedCallback(); this.tabIndex = 0; this.addEventListener("keydown", this.onPointKeyDown); window.addEventListener("beforeunload", this.beforeUnload); }
+  disconnectedCallback() { this.removeEventListener("keydown", this.onPointKeyDown); window.removeEventListener("beforeunload", this.beforeUnload); super.disconnectedCallback(); }
+  private onPointKeyDown = (event: KeyboardEvent): void => {
+    if (!this.editable || !this.editing || this.saving || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+    const path = event.composedPath();
+    const typing = path.some(el => el instanceof HTMLElement && (el.matches("input, textarea, select") || el.isContentEditable));
+    if (event.key === "Escape") {
+      this.selected = null;
+      this.drag = null;
+    } else if (!typing && (event.key === "Delete" || event.key === "Backspace") && this.selected !== null) {
+      if (this.points.length > 1) this.points = this.points.filter((_, i) => i !== this.selected);
+      this.selected = null;
+      this.focus();
+    } else if (!typing && event.code === "Space" && !event.repeat && !path.some(el => el instanceof Element && el.matches("button, a"))) {
+      if (this.points.length < 48) this.add();
+    } else return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
   private get text() { return labels[this.language.startsWith("de") ? "de" : "en"]; }
   get dirty() { return JSON.stringify(this.points) !== this.base; }
   protected willUpdate(changed: PropertyValues<this>) {
     if (changed.has("data") && this.data && (!this.base || !this.dirty) && !this.saving) this.reset();
   }
   private reset() {
+    this.selected = null;
     this.points = clone(this.data.schedule.curve ?? []); this.revision = this.data.revision;
     this.base = JSON.stringify(this.points); this.message = "";
   }
@@ -79,6 +98,7 @@ export class NumericEditor extends LitElement {
     }
     if (x === undefined) return;
     this.points = [...this.points, { x, v: this.data.config.min }].sort((a, b) => a.x - b.x);
+    this.selected = this.points.findIndex(point => point.x === x);
   }
   private move(event: PointerEvent) {
     if (this.drag === null || this.saving) return;
@@ -126,7 +146,7 @@ export class NumericEditor extends LitElement {
         <path d=${path}></path>
         ${dragged ? svg`<line class="guide" x1="0" x2=${xFor(dragged.x)} y1=${yFor(dragged.v)} y2=${yFor(dragged.v)}></line><line class="guide" x1=${xFor(dragged.x)} x2=${xFor(dragged.x)} y1=${yFor(dragged.v)} y2="100"></line>` : nothing}
         ${state.input_value != null ? svg`<line x1=${xFor(state.input_value)} x2=${xFor(state.input_value)} y1="0" y2="100"></line>` : nothing}
-        ${this.editing && this.editable ? this.points.map((p, i) => svg`<ellipse cx=${xFor(p.x)} cy=${yFor(p.v)} rx="1.5" ry="3" @pointerdown=${(e: PointerEvent) => { if (this.saving) return; this.drag = i; (e.currentTarget as Element).closest("svg")?.setPointerCapture(e.pointerId); }}></ellipse>`) : nothing}
+        ${this.editing && this.editable ? this.points.map((p, i) => svg`<ellipse class=${this.selected === i ? "selected" : ""} tabindex="0" role="button" aria-label=${`${this.text.x}: ${p.x}, ${this.text.y}: ${p.v}`} @focus=${() => { this.selected = i; }} @click=${() => { this.selected = i; this.focus(); }} cx=${xFor(p.x)} cy=${yFor(p.v)} rx="1.5" ry="3" @pointerdown=${(e: PointerEvent) => { if (this.saving) return; this.selected = i; this.drag = i; (e.currentTarget as Element).closest("svg")?.setPointerCapture(e.pointerId); }}></ellipse>`) : nothing}
       </svg>
       ${dragged ? html`<span class="axis-hit hit-x" style="left:${xFor(dragged.x)}%">${labelX(dragged.x)}</span><span class="axis-hit hit-y" style="top:${yFor(dragged.v)}%">${labelY(dragged.v)}</span>` : nothing}
       </div></div>
@@ -149,6 +169,7 @@ export class NumericEditor extends LitElement {
     :host:has(ellipse) svg { touch-action:none; }
     path { fill:none; stroke:var(--primary-color); stroke-width:2; vector-effect:non-scaling-stroke; }
     line { stroke:var(--error-color); stroke-width:1; vector-effect:non-scaling-stroke; }
+    ellipse.selected { fill:var(--error-color); }
     .graph { position:relative; padding:10px 28px 34px 70px; }
     .plot { position:relative; } svg { display:block; }
     .y-axis { position:absolute; top:0; right:calc(100% + 8px); height:100%; width:62px; }
