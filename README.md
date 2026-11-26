@@ -109,6 +109,18 @@ This uses HA's supported custom-panel API, also used by
 and [HAIR](https://github.com/DAB-LABS/HAIR/blob/main/custom_components/hair/__init__.py).
 No extra frontend dependency or dashboard configuration is required.
 
+### Clone a whole curve
+
+Administrators can select a curve in the sidebar editor and click **Clone curve**.
+Enter the new name, then confirm. The editor opens the independent copy.
+
+Cloning copies the saved configuration, all plans and their points/colors,
+ordered activations, date exceptions, and cleanup settings. It retains the input
+and target entities. The clone starts **disabled**, with no manual override, so
+it does not immediately compete with the original for the same target. Review
+the target in **Configure** before enabling the clone. Entity/device identities
+and schedule storage are independent; deleting the original leaves the clone intact.
+
 ### Add the card (optional)
 
 Edit a dashboard → **Add card** → **Curve Scheduler**. In the card settings you can choose:

@@ -26,6 +26,7 @@ from homeassistant.util import dt as dt_util
 from .axis import axis_config, default_curve, evaluate_curve, input_value
 from .const import (
     CONF_HOLIDAY_SOURCE,
+    CONF_INITIAL_SCHEDULE,
     CONF_INTERPOLATION,
     CONF_INTERVAL,
     CONF_MAX,
@@ -227,9 +228,11 @@ class CurveSchedulerRuntime:
         """Load stored data or create the default schedule."""
         stored = await self.store.async_load()
         if stored is None:
-            stored = default_schedule(
-                self.minimum, self.maximum, self.step, self.hass.config.language
-            )
+            stored = copy.deepcopy(self.entry.data.get(CONF_INITIAL_SCHEDULE))
+            if stored is None:
+                stored = default_schedule(
+                    self.minimum, self.maximum, self.step, self.hass.config.language
+                )
             stored = migrate_data(stored)
             self.data = stored
             await self.store.async_save(self.data)
@@ -256,6 +259,15 @@ class CurveSchedulerRuntime:
             for profile in self.data["profiles"].values():
                 profile.setdefault("curve", copy.deepcopy(self.data["curve"]))
         await self.store.async_save(self.data)
+        if CONF_INITIAL_SCHEDULE in self.entry.data:
+            self.hass.config_entries.async_update_entry(
+                self.entry,
+                data={
+                    key: value
+                    for key, value in self.entry.data.items()
+                    if key != CONF_INITIAL_SCHEDULE
+                },
+            )
         self._sync_activation_sources()
         issues = validate_schedule(self.data, -math.inf, math.inf, self.axis)
         if issues:

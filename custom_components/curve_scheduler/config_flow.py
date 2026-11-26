@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import copy
 import math
 from typing import Any
 
 from homeassistant.config_entries import (
     ConfigEntry,
+    ConfigEntryState,
     ConfigFlow,
     ConfigFlowResult,
     OptionsFlow,
@@ -21,6 +23,7 @@ from .const import (
     AXIS_SOURCES,
     CONF_AXIS,
     CONF_HOLIDAY_SOURCE,
+    CONF_INITIAL_SCHEDULE,
     CONF_INPUT,
     CONF_INTERPOLATION,
     CONF_INTERVAL,
@@ -231,6 +234,11 @@ class CurveSchedulerConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors[CONF_NAME] = "name_required"
             else:
                 if self._target:
+                    if any(
+                        entry.data.get(CONF_TARGET) == self._target
+                        for entry in self._async_current_entries()
+                    ):
+                        return self.async_abort(reason="already_configured")
                     await self.async_set_unique_id(self._target)
                     self._abort_if_unique_id_configured()
                 return await self.async_step_settings()
@@ -248,6 +256,24 @@ class CurveSchedulerConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+    async def async_step_clone(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Create an independent curve from a loaded instance's saved state."""
+        user_input = user_input or {}
+        source = self.hass.config_entries.async_get_entry(user_input.get("entry_id", ""))
+        if source is None or source.domain != DOMAIN or source.state is not ConfigEntryState.LOADED:
+            return self.async_abort(reason="entry_not_found")
+        name = user_input.get(CONF_NAME, "")
+        if not isinstance(name, str) or not name.strip() or len(name) > 100:
+            return self.async_abort(reason="name_required")
+        schedule = copy.deepcopy(source.runtime_data.data)
+        schedule.update(enabled=False, override=None, revision=1)
+        data = copy.deepcopy(dict(source.data))
+        name = name.strip()
+        data.update({CONF_NAME: name, CONF_INITIAL_SCHEDULE: schedule})
+        return self.async_create_entry(
+            title=name, data=data, options=copy.deepcopy(dict(source.options))
         )
 
     async def async_step_settings(
@@ -316,9 +342,14 @@ class CurveSchedulerOptionsFlow(OptionsFlow):
             user_input = {**user_input, CONF_AXIS: self._axis}
             errors = validate_settings(user_input)
             target = user_input.get(CONF_TARGET) or ""
-            if target and any(
-                entry.unique_id == target and entry.entry_id != self.config_entry.entry_id
-                for entry in self.hass.config_entries.async_entries(DOMAIN)
+            if (
+                target
+                and target != self.config_entry.data.get(CONF_TARGET)
+                and any(
+                    entry.data.get(CONF_TARGET) == target
+                    and entry.entry_id != self.config_entry.entry_id
+                    for entry in self.hass.config_entries.async_entries(DOMAIN)
+                )
             ):
                 errors[CONF_TARGET] = "target_in_use"
             candidate_axis = axis_config(user_input) if not errors else None

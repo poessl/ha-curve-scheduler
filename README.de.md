@@ -81,6 +81,17 @@ Dashboard bearbeiten → **Karte hinzufügen** → **Curve Scheduler**. In den K
 - **Kompakt** (Heute, Editor bei Bedarf) oder **Voll** (Editor immer offen),
 - ob Benutzer ohne Admin-Rechte bearbeiten dürfen (Standard: ja).
 
+### Ganze Kurve klonen
+
+Administratoren können im Seitenleisten-Editor eine Kurve auswählen und über
+**Kurve klonen** unter einem neuen Namen kopieren. Kopiert werden gespeicherte
+Einstellungen, alle Pläne mit Punkten und Farben, Aktivierungen, Datumsausnahmen
+und die automatische Bereinigung. Ein- und Ziel-Entities bleiben erhalten.
+
+Die Kopie startet **deaktiviert** und ohne manuelle Übersteuerung. Vor dem
+Aktivieren das Ziel unter **Konfigurieren** prüfen. Die Kopie hat eigene Geräte-,
+Entity- und Speicherkennungen und bleibt beim Löschen des Originals erhalten.
+
 ## Bedienung
 
 ### Heute

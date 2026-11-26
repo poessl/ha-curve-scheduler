@@ -37,6 +37,9 @@ export type SaveResult =
 export const listInstances = (hass: HomeAssistant): Promise<InstanceSummary[]> =>
   hass.callWS({ type: "curve_scheduler/list" });
 
+export const cloneInstance = (hass: HomeAssistant, entryId: string, name: string): Promise<InstanceSummary> =>
+  hass.callWS({ type: "curve_scheduler/clone", entry_id: entryId, name });
+
 export const getInstance = (hass: HomeAssistant, entryId: string): Promise<InstanceData> =>
   hass.callWS({ type: "curve_scheduler/get", entry_id: entryId });
 

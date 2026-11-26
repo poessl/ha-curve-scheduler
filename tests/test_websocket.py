@@ -244,3 +244,29 @@ async def test_numeric_curve_round_trip(hass: HomeAssistant, entry: Any, client:
     result = (await client.receive_json())["result"]
     assert result["ok"] is False
     assert result["errors"][0]["code"] == "invalid_x"
+
+
+async def test_non_admin_cannot_clone(hass: HomeAssistant, entry: Any, client: Any) -> None:
+    await client.send_json_auto_id(
+        {"type": "curve_scheduler/clone", "entry_id": entry.entry_id, "name": "Copy"}
+    )
+    result = await client.receive_json()
+    assert result["success"] is False
+    assert result["error"]["code"] == "unauthorized"
+    assert len(hass.config_entries.async_entries("curve_scheduler")) == 1
+
+
+async def test_admin_can_clone(
+    hass: HomeAssistant, entry: Any, hass_ws_client: WebSocketGenerator
+) -> None:
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id(
+        {"type": "curve_scheduler/clone", "entry_id": entry.entry_id, "name": "Copy"}
+    )
+    result = (await client.receive_json())["result"]
+    assert result["title"] == "Copy"
+    clone = hass.config_entries.async_get_entry(result["entry_id"])
+    assert clone.runtime_data.schedule_dict() == entry.runtime_data.schedule_dict()
+    assert clone.runtime_data.enabled is False
+    await client.send_json_auto_id({"type": "curve_scheduler/get", "entry_id": clone.entry_id})
+    assert (await client.receive_json())["result"]["state"]["enabled"] is False

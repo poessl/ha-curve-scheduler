@@ -64,7 +64,9 @@
       "input_is_target": "Eingang und Ziel müssen unterschiedlich sein, um eine Rückkopplung zu vermeiden."
     },
     "abort": {
-      "already_configured": "Für dieses Ziel gibt es bereits ein Zeitprofil."
+      "already_configured": "Für dieses Ziel gibt es bereits ein Zeitprofil.",
+      "entry_not_found": "Die ursprüngliche Kurve ist nicht geladen. Bitte die Liste aktualisieren.",
+      "name_required": "Bitte einen Namen mit 1–100 Zeichen eingeben."
     }
   },
   "options": {

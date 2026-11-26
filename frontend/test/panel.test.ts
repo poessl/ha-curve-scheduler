@@ -100,4 +100,47 @@ it("guards drafts before opening settings and hides admin links from non-admins"
   await settle(panel);
   expect(panel.shadowRoot!.querySelector('a[data-action="settings"]')).toBeNull();
   expect(panel.shadowRoot!.querySelector('a[data-action="add"]')).toBeNull();
+  expect(panel.shadowRoot!.querySelector('[data-action="clone"]')).toBeNull();
+});
+
+it("clones the saved curve, opens the independent copy, and updates the deep link", async () => {
+  const { panel, hass } = await mount();
+  const callWS = vi.mocked(hass.callWS);
+  const guard = vi.spyOn(card(panel), "confirmLeave").mockReturnValue(true);
+  panel.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="clone"]')!.click();
+  await settle(panel);
+  const name = panel.shadowRoot!.querySelector<HTMLInputElement>('input[name="clone-name"]')!;
+  expect(name.value).toBe("First copy");
+  expect(panel.shadowRoot!.textContent).toContain("clone starts disabled");
+  name.value = "Independent curve";
+  name.dispatchEvent(new Event("input"));
+  callWS.mockResolvedValueOnce({ entry_id: "copy", title: "Independent curve", config: instance().config });
+  panel.shadowRoot!.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+  await settle(panel);
+  expect(guard).toHaveBeenCalled();
+  expect(callWS).toHaveBeenLastCalledWith({ type: "curve_scheduler/clone", entry_id: "a", name: "Independent curve" });
+  expect(panel.selected).toBe("copy");
+  expect(card(panel)._config.entry_id).toBe("copy");
+  expect(window.location.search).toContain("entry_id=copy");
+  expect(panel.shadowRoot!.querySelector("form")).toBeNull();
+});
+
+it("preserves the source and shows clone failures while guarding unsaved drafts", async () => {
+  const { panel, hass } = await mount();
+  const callWS = vi.mocked(hass.callWS);
+  const guard = vi.spyOn(card(panel), "confirmLeave").mockReturnValue(false);
+  panel.shadowRoot!.querySelector<HTMLButtonElement>('[data-action="clone"]')!.click();
+  await settle(panel);
+  callWS.mockClear();
+  panel.shadowRoot!.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+  await settle(panel);
+  expect(callWS).not.toHaveBeenCalled();
+  expect(panel.selected).toBe("a");
+  guard.mockReturnValue(true);
+  callWS.mockRejectedValueOnce(new Error("Offline"));
+  panel.shadowRoot!.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+  await settle(panel);
+  expect(panel.shadowRoot!.querySelector('[role="alert"]')!.textContent).toContain("Offline");
+  expect(panel.selected).toBe("a");
+  expect(panel.shadowRoot!.querySelector("form")).not.toBeNull();
 });

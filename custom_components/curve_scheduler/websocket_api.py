@@ -1,7 +1,7 @@
 """Websocket commands used by the card.
 
-None of the commands require admin rights: every Home Assistant user may read
-and edit schedules.
+Every Home Assistant user may read and edit schedules. Creating a whole-curve
+clone requires admin rights, like creating an integration through setup.
 """
 
 from __future__ import annotations
@@ -52,6 +52,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_subscribe)
     websocket_api.async_register_command(hass, ws_preview)
     websocket_api.async_register_command(hass, ws_holidays)
+    websocket_api.async_register_command(hass, ws_clone)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/list"})
@@ -206,4 +207,45 @@ async def ws_holidays(
     connection.send_result(
         msg["id"],
         {"configured": provider.configured, "holidays": [d.isoformat() for d in days]},
+    )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/clone",
+        vol.Required("entry_id"): str,
+        vol.Required("name"): vol.All(str, vol.Length(min=1, max=100)),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_clone(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Clone a curve through a config flow, including its saved schedule."""
+    if _runtime(hass, connection, msg) is None:
+        return
+    if not msg["name"].strip():
+        connection.send_error(
+            msg["id"], "invalid_name", "Enter a name containing 1-100 characters."
+        )
+        return
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": "clone"}, data={"entry_id": msg["entry_id"], "name": msg["name"]}
+    )
+    entry = result.get("result")
+    if entry is None or entry.state is not ConfigEntryState.LOADED:
+        connection.send_error(
+            msg["id"],
+            "clone_failed",
+            "Could not load the cloned curve. Check the integration settings.",
+        )
+        return
+    connection.send_result(
+        msg["id"],
+        {
+            "entry_id": entry.entry_id,
+            "title": entry.title,
+            "config": entry.runtime_data.config_dict(),
+        },
     )

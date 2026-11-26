@@ -64,7 +64,9 @@
       "input_is_target": "Input and target must differ to avoid an output feeding back into its own input."
     },
     "abort": {
-      "already_configured": "This target already has a time profile."
+      "already_configured": "This target already has a time profile.",
+      "entry_not_found": "The source curve is not loaded. Refresh the curve list.",
+      "name_required": "Enter a name containing 1–100 characters."
     }
   },
   "options": {
