@@ -44,7 +44,6 @@
           "output_tick_seconds": "Sample input and update the output every 1–86400 seconds; a target is optional.",
           "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
           "x_step": "Point movement resolution; the sampled input is not rounded.",
-          "target_entity": "Optional. Without a target the calculated output is available as a sensor.",
           "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
           "y_label_step": "0 = automatic; otherwise the spacing in output units."
         }

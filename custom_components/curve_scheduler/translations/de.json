@@ -44,7 +44,6 @@
           "output_tick_seconds": "Eingang lesen und Ausgang alle 1–86400 Sekunden aktualisieren; ein Ziel ist optional.",
           "x_wrap": "Obergrenze ist beim Umlauf exklusiv. Sonst werden Werte an den Grenzen begrenzt.",
           "x_step": "Schrittweite beim Verschieben von Punkten; der Eingang wird nicht gerundet.",
-          "target_entity": "Optional. Ohne Ziel ist der berechnete Ausgang als Sensor verfügbar.",
           "x_label_step": "0 = automatisch. Tageszeit: Minuten; sonst X-Einheiten. Unabhängig vom Einrasten der Punkte.",
           "y_label_step": "0 = automatisch; sonst Abstand in Ausgangseinheiten."
         }
