@@ -1,6 +1,9 @@
 {
   "domain": "curve_scheduler",
   "name": "Curve Scheduler",
+  "categories": [
+    "helpers"
+  ],
   "codeowners": [
     "@poessl"
   ],
@@ -16,8 +19,5 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/timzifer/ha-curve-scheduler/issues",
   "requirements": [],
-  "version": "0.1.0",
-  "categories": [
-    "helpers"
-  ]
+  "version": "0.1.0"
 }
