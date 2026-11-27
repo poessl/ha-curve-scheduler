@@ -24,6 +24,7 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.event import (
     async_track_point_in_time,
     async_track_point_in_utc_time,
@@ -33,6 +34,7 @@ from homeassistant.helpers.event import (
 from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
+from .anchors import resolve_positions, source_coordinate
 from .axis import axis_config, default_curve, evaluate_curve, input_value
 from .conditions import ScheduleCondition, async_compile_schedule_condition
 from .const import (
@@ -103,16 +105,13 @@ class ComputedValue:
     next_point_time: datetime | None
     next_point_value: float | None
     input_x: float | None = None
+    errors: list[ValidationIssue] | None = None
 
 
 def local_datetime(day: date, minutes: float) -> datetime:
     """Return the local datetime for minutes after midnight of ``day``."""
-    offset_days, minute = divmod(int(minutes), MINUTES_PER_DAY)
-    target_day = day + timedelta(days=offset_days)
-    return datetime.combine(
-        target_day,
-        time(minute // 60, minute % 60),
-        tzinfo=dt_util.get_default_time_zone(),
+    return datetime.combine(day, time(), tzinfo=dt_util.get_default_time_zone()) + timedelta(
+        minutes=minutes
     )
 
 
@@ -139,6 +138,8 @@ class CurveSchedulerRuntime:
         self._unavailable_warned = False
         self._last_day: date | None = None
         self._stopped = False
+        self._anchor_warnings: dict[str, str] = {}
+        self._anchor_failure: str | None = None
 
     # ------------------------------------------------------------------
     # Configuration
@@ -351,6 +352,14 @@ class CurveSchedulerRuntime:
         if self._activation_unsub:
             self._activation_unsub()
         sources |= self._condition_entities
+        if self.axis["source"] in ("time_of_day", "day_of_week"):
+            collection = "points" if self.axis["source"] == "time_of_day" else "curve"
+            sources.update(
+                point["anchor"]["entity_id"]
+                for profile in self.data["profiles"].values()
+                for point in profile.get(collection, [])
+                if point.get("anchor")
+            )
         self._activation_unsub = (
             async_track_state_change_event(
                 self.hass, list(sources), self._async_holiday_source_changed
@@ -393,6 +402,7 @@ class CurveSchedulerRuntime:
 
     async def async_stop(self) -> None:
         """Remove listeners and timers."""
+        ir.async_delete_issue(self.hass, "curve_scheduler", f"anchors_{self.entry.entry_id}")
         self._stopped = True
         for checker in self._conditions.values():
             checker.async_unload()
@@ -541,7 +551,84 @@ class CurveSchedulerRuntime:
         local = dt_util.as_local(at)
         return [(day, self.day_profile(day, local)) for day in timeline_days(local.date())]
 
+    def resolved_profile(
+        self, profile_id: str, *, sort_result: bool = True
+    ) -> list[tuple[float, float]]:
+        """Resolve a plan against the current source states without side effects."""
+        profile = self.data["profiles"][profile_id]
+        source = self.axis["source"]
+        if source == "time_of_day":
+            points = profile["points"]
+            coordinates = [x for x, _ in profile_points(profile)]
+        else:
+            points = profile["curve"]
+            coordinates = [point["x"] for point in points]
+        if source not in ("time_of_day", "day_of_week"):
+            return [(point["x"], point["v"]) for point in points]
+        # Resolve each source per anchor: date-only sources preserve that anchor's time.
+        targets = {}
+        adapted = copy.deepcopy(points)
+        for index, (point, coordinate) in enumerate(zip(points, coordinates, strict=True)):
+            anchor = point.get("anchor")
+            if not anchor:
+                continue
+            try:
+                target = source_coordinate(
+                    self.hass.states.get(anchor["entity_id"]), source, coordinate
+                )
+            except ValueError:
+                target = None
+            key = str(index)
+            adapted[index]["anchor"]["entity_id"] = key
+            if target is not None:
+                targets[key] = target
+        result, issues = resolve_positions(
+            adapted,
+            coordinates,
+            targets,
+            self.axis["max"] - self.axis["min"],
+            self.axis["min"],
+            sort_result=sort_result,
+        )
+        if issues:
+            raise ScheduleValidationError(
+                [
+                    ValidationIssue(
+                        issue.code,
+                        f"profiles.{profile_id}.{issue.path}",
+                        {
+                            **issue.params,
+                            "profile": profile_id,
+                            "saved_coordinates": coordinates,
+                            "sources": [
+                                p["anchor"]["entity_id"] for p in points if p.get("anchor")
+                            ],
+                        },
+                    )
+                    for issue in issues
+                ]
+            )
+        return result
+
     def compute_at(self, at: datetime) -> ComputedValue:
+        """Compute output, making invalid resolved geometry unavailable."""
+        try:
+            return self._compute_at(at)
+        except ScheduleValidationError as err:
+            local = dt_util.as_local(at)
+            selected = self.day_profile(local.date(), local)
+            return ComputedValue(
+                None,
+                None,
+                selected.profile_id,
+                selected.reason,
+                None,
+                None,
+                input_value(self.hass, local, self.axis),
+                err.issues,
+            )
+
+    def _compute_at(self, at: datetime) -> ComputedValue:
         """Compute the setpoint for a point in time."""
         local = dt_util.as_local(at)
         if self.axis["source"] != "time_of_day":
@@ -549,7 +636,7 @@ class CurveSchedulerRuntime:
             resolved = self.day_profile(local.date(), local)
             raw = (
                 evaluate_curve(
-                    self.data["profiles"][resolved.profile_id]["curve"],
+                    [{"x": x, "v": v} for x, v in self.resolved_profile(resolved.profile_id)],
                     x,
                     self.axis,
                     self.mode,
@@ -568,9 +655,7 @@ class CurveSchedulerRuntime:
             )
             return ComputedValue(raw, value, resolved.profile_id, resolved.reason, None, None, x)
         days = self.timeline_profiles(local)
-        timeline = build_timeline(
-            [profile_points(self.data["profiles"][dp.profile_id]) for _, dp in days]
-        )
+        timeline = build_timeline([self.resolved_profile(dp.profile_id) for _, dp in days])
         x = local.hour * 60 + local.minute + local.second / 60.0
         raw = interpolate(timeline, x, self.mode)
         value = clamp(
@@ -653,7 +738,11 @@ class CurveSchedulerRuntime:
         self, day: date, schedule: dict[str, Any] | None, step_minutes: int
     ) -> list[list[float]]:
         """Return the curve of ``day`` as ``[minute, value]`` pairs."""
-        data = self.data if schedule is None else {**self.data, **schedule}
+        if schedule is not None:
+            preview = copy.copy(self)
+            preview.data = {**self.data, **schedule}
+            return preview.preview(day, None, step_minutes)
+        data = self.data
         override = self.active_override(dt_util.now())
         if self.axis["source"] != "time_of_day":
             width = self.axis["max"] - self.axis["min"]
@@ -661,15 +750,18 @@ class CurveSchedulerRuntime:
                 [
                     x,
                     evaluate_curve(
-                        data["profiles"][
-                            override
-                            or resolve_day(
-                                data,
-                                day,
-                                self._is_holiday,
-                                lambda index: self._matches_condition(index, day),
-                            ).profile_id
-                        ]["curve"],
+                        [
+                            {"x": px, "v": pv}
+                            for px, pv in self.resolved_profile(
+                                override
+                                or resolve_day(
+                                    data,
+                                    day,
+                                    self._is_holiday,
+                                    lambda index: self._matches_condition(index, day),
+                                ).profile_id
+                            )
+                        ],
                         x,
                         self.axis,
                         self.mode,
@@ -688,7 +780,7 @@ class CurveSchedulerRuntime:
                     self._is_holiday,
                     partial(self._matches_condition, day=current_day),
                 ).profile_id
-            profiles.append(profile_points(data["profiles"][profile_id]))
+            profiles.append(self.resolved_profile(profile_id))
         timeline = build_timeline(profiles)
         return [
             [float(minute), interpolate(timeline, float(minute), self.mode)]
@@ -735,11 +827,63 @@ class CurveSchedulerRuntime:
             await provider.async_ensure(
                 now.date() - timedelta(days=2), now.date() + timedelta(days=3)
             )
+        self._log_anchor_sources()
         computed = self._compute(now)
+        self._report_anchor_errors(computed.errors or [])
         adjusted = self.adjusted_value(computed.value)
         if adjusted is not None:
             await self._async_write(adjusted, force)
         self._notify()
+
+    def _log_anchor_sources(self) -> None:
+        """Warn once per malformed value while retaining fallback geometry."""
+        source = self.axis["source"]
+        if source not in ("time_of_day", "day_of_week"):
+            self._anchor_warnings.clear()
+            return
+        warnings: dict[str, str] = {}
+        for profile in self.data["profiles"].values():
+            points = profile["points" if source == "time_of_day" else "curve"]
+            for point in points:
+                anchor = point.get("anchor")
+                if not anchor:
+                    continue
+                entity = anchor["entity_id"]
+                try:
+                    source_coordinate(self.hass.states.get(entity), source, 0)
+                except ValueError as err:
+                    message = str(err)
+                    if (
+                        self._anchor_warnings.get(entity) != message
+                        and warnings.get(entity) != message
+                    ):
+                        _LOGGER.warning(
+                            "Anchor source %s: %s; using saved positions", entity, message
+                        )
+                    warnings[entity] = message
+        self._anchor_warnings = warnings
+
+    def _report_anchor_errors(self, errors: list[ValidationIssue]) -> None:
+        """Maintain one automatically clearing Repair for invalid live geometry."""
+        issue_id = f"anchors_{self.entry.entry_id}"
+        detail = str([issue.as_dict() for issue in errors]) if errors else None
+        if detail == self._anchor_failure:
+            return
+        self._anchor_failure = detail
+        if detail is None:
+            ir.async_delete_issue(self.hass, "curve_scheduler", issue_id)
+            return
+        _LOGGER.error("Curve %s unavailable: %s", self.entry.title, detail)
+        ir.async_create_issue(
+            self.hass,
+            "curve_scheduler",
+            issue_id,
+            config_entry_id=self.entry.entry_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="anchor_collision",
+            translation_placeholders={"name": self.entry.title, "detail": detail},
+        )
 
     @property
     def offset(self) -> float:
@@ -944,6 +1088,23 @@ class CurveSchedulerRuntime:
     # ------------------------------------------------------------------
     # Serialization for the websocket API
 
+    def resolved_profiles(self) -> dict[str, Any]:
+        """Serialize resolved geometry for display without changing saved plans."""
+        result: dict[str, Any] = {}
+        for profile_id in self.data["profiles"]:
+            try:
+                result[profile_id] = {
+                    "points": self.resolved_profile(profile_id),
+                    "point_positions": self.resolved_profile(profile_id, sort_result=False),
+                    "errors": [],
+                }
+            except ScheduleValidationError as err:
+                result[profile_id] = {
+                    "points": None,
+                    "errors": [issue.as_dict() for issue in err.issues],
+                }
+        return result
+
     def state_dict(self) -> dict[str, Any]:
         """Return the live state for the card."""
         now = dt_util.now()
@@ -951,6 +1112,7 @@ class CurveSchedulerRuntime:
         in_one_hour = self.compute_at(now + timedelta(hours=1))
         profiles = self.timeline_profiles(now)
         return {
+            "resolved_profiles": self.resolved_profiles(),
             "now": now.isoformat(),
             "enabled": self.enabled,
             "override": copy.deepcopy(self.data.get("override")),
@@ -959,7 +1121,9 @@ class CurveSchedulerRuntime:
             "offset": self.offset,
             "curve_value": self.adjusted_value(current.value),
             "input_value": current.input_x,
-            "input_available": current.value is not None,
+            "input_available": current.input_x is not None,
+            "curve_available": current.value is not None,
+            "curve_errors": [issue.as_dict() for issue in current.errors or []],
             "profile_id": current.profile_id,
             "reason": current.reason,
             "next_point": (

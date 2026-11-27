@@ -5,6 +5,7 @@ import { roundToStep } from "./interpolation";
 import { formatNumber } from "./format";
 import { clone, type InstanceData, type NumericPoint } from "./model";
 import "./curve";
+import { anchorControls, detachDeletedAnchors } from "./anchor-editor";
 import { sharedStyles } from "./styles";
 
 const labels = {
@@ -13,8 +14,9 @@ const labels = {
 };
 
 export class NumericEditor extends LitElement {
-  static properties = { graphOnly: { attribute: false }, offset: { attribute: false }, embedded: { type: Boolean }, selected: { state: true }, hass: { attribute: false }, data: { attribute: false }, editable: { type: Boolean }, language: {}, points: { state: true }, editing: { state: true }, message: { state: true }, saving: { state: true } };
+  static properties = { showLegend: { type: Boolean }, graphOnly: { attribute: false }, offset: { attribute: false }, embedded: { type: Boolean }, selected: { state: true }, hass: { attribute: false }, data: { attribute: false }, editable: { type: Boolean }, language: {}, points: { state: true }, editing: { state: true }, message: { state: true }, saving: { state: true } };
   declare graphOnly: boolean;
+  declare showLegend: boolean;
   declare offset: number;
   declare embedded: boolean;
   declare hass: HomeAssistant;
@@ -43,7 +45,7 @@ export class NumericEditor extends LitElement {
     if (event.key === "Escape") {
       this.selected = null;
     } else if (!typing && (event.key === "Delete" || event.key === "Backspace") && this.selected !== null) {
-      if (this.points.length > 1) this.points = this.points.filter((_, i) => i !== this.selected);
+      if (this.points.length > 1) this.points = detachDeletedAnchors(this.points.filter((_, i) => i !== this.selected));
       this.selected = null;
       this.focus();
     } else if (!typing && event.code === "Space" && !event.repeat && !path.some(el => el instanceof Element && el.matches("button, a"))) {
@@ -107,13 +109,19 @@ export class NumericEditor extends LitElement {
     if (!this.data?.config.axis) return nothing;
     const { config, state } = this.data;
     const axis = config.axis!;
+    const live = !this.editable && !this.embedded ? state.resolved_profiles?.[state.profile_id] : undefined;
+    const anchored = this.points.some(p => p.anchor || p.partner_of);
     return html`
       ${this.graphOnly ? nothing : html`<p>${this.text.x}: ${state.input_value == null ? "—" : formatNumber(state.input_value, 10 ** -(config.input_decimals ?? 2), this.language)} → ${this.text.y}: ${state.value ?? "—"} ${config.unit ?? ""}</p>
       <p class="muted">${axis.source === "sensor" ? axis.input_entity : axis.source === "day_of_week" ? (this.language.startsWith("de") ? "Wochentag (1 = Mo, 7 = So; Bruchteile = Tageszeit)" : "Day of week (1 = Mon, 7 = Sun; fractions = time of day)") : axis.source} · ${axis.min}…${axis.max} · ${axis.wrap ? this.text.wrap : this.text.clamp}</p>`}
       ${state.input_available === false ? html`<p role="status">${this.text.unavailable}</p>` : nothing}
       <curve-scheduler-curve
+        .showLegend=${this.showLegend && !this.editable && !this.embedded}
         .offset=${this.offset}
         .axis=${axis} .numericPoints=${this.valid ? this.points : []}
+        .displayPoints=${live ? live.points ?? [] : undefined}
+        .pointPositions=${live?.point_positions}
+        .referencePoints=${live && (anchored || live.errors.length) ? this.points.map(p => [p.x, p.v]) : undefined}
         .mode=${config.interpolation} .min=${config.min} .max=${config.max} .step=${config.step}
         .xLabelStep=${config.x_label_step ?? 0} .yLabelStep=${config.y_label_step ?? 0}
         .unit=${config.unit} .language=${this.language}
@@ -126,10 +134,11 @@ export class NumericEditor extends LitElement {
       ></curve-scheduler-curve>
       ${this.editable && !this.embedded ? html`<button @click=${() => { if (!this.editing || !this.dirty || window.confirm(this.text.discard)) { if (this.editing) this.reset(); this.editing = !this.editing; } }}>${this.text.edit}</button>` : nothing}
       ${this.editable && this.editing ? html`
-        ${this.points.map((p, i) => html`<div class="row">
+        ${axis.source === "day_of_week" ? anchorControls(this.points, this.selected, this.hass, this.language, points => { this.points = points; }) : nothing}
+        ${this.points.map((p, i) => html`<div class="row" @focusin=${() => { this.selected = i; }}>
           <label>${this.text.x}<input type="number" step=${axis.step} min=${axis.min} max=${axis.max} .value=${String(p.x)} ?disabled=${this.saving} @change=${(e: Event) => this.changed(i, "x", Number((e.target as HTMLInputElement).value))}></label>
           <label>${this.text.y}<input type="number" step=${config.step} min=${config.min} max=${config.max} .value=${String(p.v)} ?disabled=${this.saving} @change=${(e: Event) => this.changed(i, "v", Number((e.target as HTMLInputElement).value))}></label>
-          <button aria-label=${`${this.text.remove} ${i + 1}`} ?disabled=${this.saving || this.points.length <= 1} @click=${() => { this.points = this.points.filter((_, j) => i !== j); }}>${this.text.remove}</button>
+          <button aria-label=${`${this.text.remove} ${i + 1}`} ?disabled=${this.saving || this.points.length <= 1} @click=${() => { this.points = detachDeletedAnchors(this.points.filter((_, j) => i !== j)); }}>${this.text.remove}</button>
         </div>`)}
         <button ?disabled=${this.saving || this.points.length >= 48} @click=${this.add}>${this.text.add}</button>
         ${!this.embedded ? html`<button ?disabled=${this.saving} @click=${this.reset}>${this.text.discard}</button>

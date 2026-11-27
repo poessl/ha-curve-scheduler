@@ -266,6 +266,17 @@ def validate_schedule(
             issues.extend(
                 ValidationIssue(i.code, f"{path}.{i.path}", i.params) for i in curve_issues
             )
+        issues.extend(validate_anchors(profile.get("points"), f"{path}.points"))
+        issues.extend(validate_anchors(profile.get("curve"), f"{path}.curve"))
+        if (
+            axis
+            and axis["source"] in ("month_of_year", "sensor")
+            and any(
+                isinstance(point, Mapping) and ("anchor" in point or "partner_of" in point)
+                for point in (profile["curve"] if isinstance(profile.get("curve"), list) else [])
+            )
+        ):
+            _issue(issues, "invalid_anchor", f"{path}.curve")
         # Time points remain available when switching the input axis.
         numeric = axis is not None and axis["source"] != "time_of_day"
         _validate_points(
@@ -451,7 +462,7 @@ def normalize_schedule(data: Mapping[str, Any]) -> dict[str, Any]:
                     else {}
                 ),
                 "points": [
-                    {"t": format_time(parse_time(p["t"])), "v": float(p["v"])}
+                    {**deepcopy(p), "t": format_time(parse_time(p["t"])), "v": float(p["v"])}
                     for p in profile["points"]
                 ],
             }
@@ -542,3 +553,48 @@ def timeline_days(day: date, before: int = 2, after: int = 2) -> list[date]:
 def minute_of_day(hour: int, minute: int, second: float = 0.0) -> float:
     """Wall clock time as fractional minutes after midnight."""
     return min(float(MINUTES_PER_DAY), hour * 60 + minute + second / 60.0)
+
+
+def validate_anchors(points: Any, path: str) -> list[ValidationIssue]:
+    """Validate optional point identities and local anchor references."""
+    issues: list[ValidationIssue] = []
+    if not isinstance(points, list):
+        return issues
+    identities: set[str] = set()
+    anchors: set[str] = set()
+    for index, point in enumerate(points):
+        if not isinstance(point, Mapping):
+            continue
+        point_id = point.get("id")
+        if point_id is not None:
+            if (
+                not isinstance(point_id, str)
+                or not point_id
+                or len(point_id) > 64
+                or point_id in identities
+            ):
+                _issue(issues, "invalid_anchor", f"{path}.{index}.id")
+            else:
+                identities.add(point_id)
+        if "anchor" in point:
+            anchor = point["anchor"]
+            if (
+                not isinstance(point_id, str)
+                or not point_id
+                or not isinstance(anchor, Mapping)
+                or not isinstance(anchor.get("entity_id"), str)
+                or not re.fullmatch(
+                    r"(?:input_datetime|datetime|sensor)\.[a-z0-9_]+", anchor["entity_id"]
+                )
+                or anchor.get("shift_mode", "shortest") not in ("shortest", "direct")
+                or "partner_of" in point
+            ):
+                _issue(issues, "invalid_anchor", f"{path}.{index}.anchor")
+            else:
+                anchors.add(point_id)
+    for index, point in enumerate(points):
+        if isinstance(point, Mapping) and "partner_of" in point:
+            partner = point["partner_of"]
+            if not isinstance(partner, str) or partner not in anchors:
+                _issue(issues, "invalid_anchor", f"{path}.{index}.partner_of")
+    return issues

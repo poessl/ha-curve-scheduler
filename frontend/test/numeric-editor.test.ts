@@ -237,3 +237,19 @@ it.each(["month_of_year", "day_of_week", "sensor"] as const)("formats the live %
     expect(editor.shadowRoot!.querySelector("p")!.textContent).toContain(`: ${input === 0 ? "0" : "—"} →`);
   }
 });
+
+it("offers anchor roles on weekly curves and keeps the editor at saved coordinates", async () => {
+  const { editor } = await mount();
+  editor.data = { ...editor.data, config: { ...editor.data.config, axis: { source: "day_of_week", input_entity: null, min: 1, max: 8, step: 0.01, wrap: true } } };
+  editor.points = [{ x: 1.25, v: 50 }, { x: 1.5, v: 40 }];
+  await editor.updateComplete;
+  const row = editor.shadowRoot!.querySelector('.row')!;
+  row.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+  await editor.updateComplete;
+  const role = editor.shadowRoot!.querySelector<HTMLSelectElement>('.anchor-controls select')!;
+  role.value = "anchor"; role.dispatchEvent(new Event("change"));
+  await editor.updateComplete;
+  expect(editor.points[0].anchor).toEqual({ entity_id: "", shift_mode: "shortest" });
+  expect(editor.points[0].x).toBe(1.25);
+  expect(graph(editor).displayPoints).toBeUndefined();
+});

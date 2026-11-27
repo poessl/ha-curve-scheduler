@@ -32,6 +32,7 @@ export interface CurveSchedulerCardConfig {
   show_reason?: boolean;
   show_input?: boolean;
   show_offset?: boolean;
+  show_legend?: boolean;
   show_clear_offset?: boolean;
   show_controls?: boolean;
   allow_edit?: boolean;
@@ -282,8 +283,13 @@ export class CurveSchedulerCard extends LitElement {
     );
     const now = this.nowMinute(data);
     const centerPoints: Point[] = profile ? profilePoints(profile) : [];
-    const timeline = buildTimeline([context[0], context[1], centerPoints, context[2], context[3]]);
-    const nowValue = timeline.length
+    const resolved = state.resolved_profiles;
+    const livePoints = resolved?.[state.profile_id]?.points;
+    const liveContext = resolved ? [ids[0], ids[1], ids[3], ids[4]].map(id => resolved[id]?.points ?? []) : context;
+    const anchored = config.axis?.source === "day_of_week" ? profile?.curve?.some(p => p.anchor || p.partner_of) : ids.some(id => schedule.profiles[id]?.points.some(p => p.anchor || p.partner_of));
+    const curveInvalid = state.curve_available === false && !!state.curve_errors?.length;
+    const timeline = buildTimeline([liveContext[0], liveContext[1], livePoints ?? centerPoints, liveContext[2], liveContext[3]]);
+    const nowValue = !curveInvalid && timeline.length
       ? new Interpolator(timeline, config.interpolation).at(now)
       : null;
     const parts = [
@@ -310,10 +316,15 @@ export class CurveSchedulerCard extends LitElement {
       }
     }
     const modeValue = state.override ? state.override.profile : "auto";
-    const graph = html`${config.axis && config.axis.source !== "time_of_day" ? html`<curve-scheduler-numeric-editor .graphOnly=${!this.infoVisible("show_input")} .data=${{ ...data, schedule: { ...schedule, curve: profile?.curve ?? [] } }} .language=${this.language} .offset=${profile?.apply_offset === false ? 0 : state.offset ?? 0}></curve-scheduler-numeric-editor>` : html`<curve-scheduler-curve
+    const graph = html`${config.axis && config.axis.source !== "time_of_day" ? html`<curve-scheduler-numeric-editor .showLegend=${this._config.show_legend !== false} .graphOnly=${!this.infoVisible("show_input")} .data=${{ ...data, schedule: { ...schedule, curve: profile?.curve ?? [] } }} .language=${this.language} .offset=${profile?.apply_offset === false ? 0 : state.offset ?? 0}></curve-scheduler-numeric-editor>` : html`<curve-scheduler-curve
         .offset=${profile?.apply_offset === false ? 0 : state.offset ?? 0}
+        .showLegend=${this._config.show_legend !== false}
+        .pointPositions=${resolved?.[state.profile_id]?.point_positions}
         .points=${profile?.points ?? []}
-        .context=${context}
+        .displayPoints=${curveInvalid ? [] : livePoints ?? undefined}
+        .referencePoints=${anchored || curveInvalid ? centerPoints : undefined}
+        .referenceContext=${context}
+        .context=${liveContext}
         .mode=${config.interpolation}
         .min=${config.min}
         .max=${config.max}
@@ -333,14 +344,15 @@ export class CurveSchedulerCard extends LitElement {
         ${this.infoVisible("show_summary") ? html`<div class="headline">${parts.join(" · ")}</div>` : nothing}
         ${reason && this.infoVisible("show_reason") ? html`<div class="muted">${reason}</div>` : nothing}
       </div>` : nothing}
-      ${(this.infoVisible("show_offset") && (state.offset ?? 0) !== 0) || this._config.show_clear_offset ? html`<div class="top-offset">
+      ${(this.infoVisible("show_offset") && (state.offset ?? 0) !== 0) || (this._config.show_clear_offset && (state.offset ?? 0) !== 0) ? html`<div class="top-offset">
         ${this.infoVisible("show_offset") && (state.offset ?? 0) !== 0 ? html`<span>${this.language.startsWith("de") ? "Versatz" : "Offset"}: ${this.fmt(state.offset!)}</span>` : nothing}
-        ${this._config.show_clear_offset ? html`<button class="clear-offset" ?disabled=${!(state.offset ?? 0)} @click=${async () => {
+        ${this._config.show_clear_offset && (state.offset ?? 0) !== 0 ? html`<button class="clear-offset" ?disabled=${!(state.offset ?? 0)} @click=${async () => {
           try { await this.hass!.callService("curve_scheduler", "clear_offset", { config_entry_id: data.entry_id }); }
           catch { this._error = this.language.startsWith("de") ? "Versatz konnte nicht zurückgesetzt werden." : "Could not clear offset."; }
         }}>${this.language.startsWith("de") ? "Versatz zurücksetzen" : "Clear offset"}</button>` : nothing}
       </div>` : nothing}
       ${graph}
+      ${curveInvalid ? html`<div class="notice error" role="alert">${this.language.startsWith("de") ? "Kurve nicht verfügbar: Ankerpunkte überschneiden sich. Ankerquellen oder Partnerzuordnung korrigieren." : "Curve unavailable: anchor points collide. Correct the source values or partner assignments."} ${state.curve_errors?.map(e => `${schedule.profiles[String(e.params.profile)]?.name ?? ""}: ${this.language.startsWith("de") ? "Punkte" : "points"} ${Number(e.params.point) + 1} / ${Number(e.params.following) + 1}`).join("; ")}</div>` : nothing}
       ${state.enabled ? nothing : html`<div class="notice warning">${this.t("today.disabled")}</div>`}
       ${state.enabled && config.target && !state.target_available
         ? html`<div class="notice warning">${this.t("today.unavailable")}</div>`

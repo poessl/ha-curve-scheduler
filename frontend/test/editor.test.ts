@@ -615,3 +615,33 @@ it("edits month checkboxes and a native overnight time condition", async () => {
   await settle();
   expect(editor._draft.activations![0].condition).toEqual({ condition: "time", after: "22:00", before: "06:00" });
 });
+
+it("assigns anchors and partners and restores relationships with undo", async () => {
+  editor._selected = 0;
+  await settle();
+  const role = () => editor.shadowRoot!.querySelector<HTMLSelectElement>('.anchor-controls select')!;
+  role().value = "anchor";
+  role().dispatchEvent(new Event("change"));
+  await settle();
+  editor.shadowRoot!.querySelector('.anchor-controls ha-entity-picker')!.dispatchEvent(
+    new CustomEvent("value-changed", { detail: { value: "input_datetime.alarm" } }));
+  await settle();
+  const id = points()[0].id;
+  expect(id).toBeTruthy();
+  expect(points()[0].anchor?.entity_id).toBe("input_datetime.alarm");
+  editor._selected = 1;
+  await settle();
+  role().value = "partner";
+  role().dispatchEvent(new Event("change"));
+  await settle();
+  expect(points()[1].partner_of).toBe(id);
+  editor.setPointValue(0, 55);
+  await settle();
+  expect(points()[0].id).toBe(id);
+  editor.deletePoint(0);
+  await settle();
+  expect(points()[0].partner_of).toBeUndefined();
+  editor.undo();
+  await settle();
+  expect(points()[1].partner_of).toBe(id);
+});

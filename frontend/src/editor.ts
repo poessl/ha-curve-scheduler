@@ -6,6 +6,7 @@
  */
 
 import { LitElement, css, html, nothing, type PropertyValues, type TemplateResult } from "lit";
+import { anchorControls, detachDeletedAnchors } from "./anchor-editor";
 import { repeat } from "lit/directives/repeat.js";
 import { fetchHolidays, saveSchedule, type HomeAssistant } from "./api";
 import { formatNumber, formatValue, parseNumber } from "./format";
@@ -535,7 +536,7 @@ export class CurveSchedulerEditor extends LitElement {
   private setPoints(points: SchedulePoint[], selected: number | null): void {
     const id = this._profileId;
     this.change((draft) => {
-      draft.profiles[id].points = points;
+      draft.profiles[id].points = detachDeletedAnchors(points);
     });
     this._selected = selected;
   }
@@ -1038,7 +1039,9 @@ export class CurveSchedulerEditor extends LitElement {
           </select>
         </label>
       </div>
-      ${this.renderSelectedPoint(profile)} ${this.renderPointTable(profile)}
+      ${this.renderSelectedPoint(profile)}
+      ${anchorControls(profile.points, this._selected, this.hass, this.language, points => this.setPoints(points, this._selected))}
+      ${this.renderPointTable(profile)}
       ${this.renderCopyCurve()}
     `;
   }
@@ -1514,13 +1517,13 @@ export class CurveSchedulerEditor extends LitElement {
       <span>${text("Raw curve value", "Unveränderter Kurvenwert")}: ${this.data.state.value ?? "–"} ${this.config.unit}</span>
       <span>${text("Offset", "Versatz")}: ${this.data.state.offset ?? 0} ${this.config.unit}</span>
       <span>${text("Curve value", "Kurvenwert")}: ${this.data.state.curve_value ?? this.data.state.value ?? "–"} ${this.config.unit}</span>
-      <button ?disabled=${!(this.data.state.offset ?? 0)} @click=${async () => {
+      ${(this.data.state.offset ?? 0) !== 0 ? html`<button @click=${async () => {
         try {
           await this.hass!.callService("curve_scheduler", "clear_offset", { config_entry_id: this.data.entry_id });
         } catch {
           this.showMessage({ kind: "warning", text: text("Could not clear offset. Try again.", "Versatz konnte nicht zurückgesetzt werden. Erneut versuchen.") });
         }
-      }}>${text("Clear offset", "Versatz zurücksetzen")}</button>
+      }}>${text("Clear offset", "Versatz zurücksetzen")}</button>` : nothing}
     </div>${this.renderTabs()}
       <div class="body" role="tabpanel">${body}</div>
       ${this.renderFooter()}`;

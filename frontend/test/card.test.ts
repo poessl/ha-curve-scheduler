@@ -47,7 +47,7 @@ afterEach(() => {
 
 describe("curve-scheduler-card", () => {
   it("is announced to the card picker", () => {
-    expect(window.customCards?.some((c) => c.type === "curve-scheduler-card")).toBe(true);
+    expect(window.customCards?.find((c) => c.type === "curve-scheduler-card")?.name).toBe("Curve Schedule");
   });
 
   it("shows the active plan summary", async () => {
@@ -175,4 +175,14 @@ it("places optional offset information and its independent reset button above th
   graph.offset = 0;
   await graph.updateComplete;
   expect(graph.shadowRoot!.querySelector(".now-dot")!.getAttribute("cy")).not.toBe(withOffset);
+});
+
+it("shows clear offset only for a nonzero stored offset", async () => {
+  const { card } = await mount({ show_clear_offset:true, show_controls:false });
+  expect(card.shadowRoot!.querySelector('.clear-offset')).toBeNull();
+  const data = card._data!;
+  card._data = { ...data, state: { ...data.state, offset:-3 } }; await card.updateComplete;
+  expect(card.shadowRoot!.querySelector('.clear-offset')).not.toBeNull();
+  card._data = { ...data, state: { ...data.state, offset:0 } }; await card.updateComplete;
+  expect(card.shadowRoot!.querySelector('.clear-offset')).toBeNull();
 });

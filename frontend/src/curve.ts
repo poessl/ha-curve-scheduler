@@ -53,8 +53,13 @@ interface DragState {
 export class CurveSchedulerCurve extends LitElement {
   static properties = {
     offset: { attribute: false },
+    showLegend: { type: Boolean },
     points: { attribute: false },
     numericPoints: { attribute: false },
+    displayPoints: { attribute: false },
+    referencePoints: { attribute: false },
+    pointPositions: { attribute: false },
+    referenceContext: { attribute: false },
     axis: { attribute: false },
     context: { attribute: false },
     mode: {},
@@ -80,6 +85,10 @@ export class CurveSchedulerCurve extends LitElement {
   /** Time plans retain their serialized HH:MM points; numeric plans use numericPoints + axis. */
   declare points: SchedulePoint[];
   declare numericPoints: NumericPoint[];
+  declare displayPoints: Point[] | undefined;
+  declare referencePoints: Point[] | undefined;
+  declare pointPositions: Point[] | undefined;
+  declare referenceContext: Point[][] | null | undefined;
   declare axis: AxisConfig | null;
   /** Points of [day-2, day-1, day+1, day+2]; null repeats the edited day. */
   declare context: Point[][] | null;
@@ -96,6 +105,7 @@ export class CurveSchedulerCurve extends LitElement {
   declare editable: boolean;
   declare nowMinute: number | null;
   declare offset: number;
+  declare showLegend: boolean;
   declare nowValue: number | null;
   declare selected: number | null;
   declare height: number;
@@ -216,10 +226,10 @@ export class CurveSchedulerCurve extends LitElement {
 
   /** Points currently displayed (live while dragging). */
   get shownPoints(): ChartPoint[] {
-    return this._drag?.points ?? this.sourcePoints;
+    return this._drag?.points ?? (this.displayPoints ? this.displayPoints.map(([x, v]) => ({ x, v })) : this.sourcePoints);
   }
 
-  private timeline(points: ChartPoint[]): Point[] | null {
+  private timeline(points: ChartPoint[], context = this.context): Point[] | null {
     if (points.length === 0) {
       return null;
     }
@@ -229,7 +239,7 @@ export class CurveSchedulerCurve extends LitElement {
       const width = this.axis.max - this.axis.min;
       return [-2, -1, 0, 1, 2].flatMap(n => center.map(([x, v]) => [x + n * width, v] as Point));
     }
-    const ctx = this.context;
+    const ctx = context;
     const days = ctx ? [ctx[0], ctx[1], center, ctx[2], ctx[3]] : [center, center, center, center, center];
     return buildTimeline(days);
   }
@@ -277,7 +287,7 @@ export class CurveSchedulerCurve extends LitElement {
     // Clamp may land between grid steps when neighbours are close: keep 5 min grid.
     const gridT = clamp(Math.round(t / TIME_GRID_MINUTES) * TIME_GRID_MINUTES, low, high);
     const next = points.map((p) => ({ ...p }));
-    next[index] = this.pointAt(this.axis ? t : gridT, this.snapValue(value)) as T;
+    next[index] = { ...next[index], ...this.pointAt(this.axis ? t : gridT, this.snapValue(value)) } as T;
     return next;
   }
 
@@ -456,8 +466,8 @@ export class CurveSchedulerCurve extends LitElement {
   // ------------------------------------------------------------------
   // Rendering
 
-  private curvePath(points: ChartPoint[], from: number, to: number, adjusted = false): string {
-    const timeline = this.timeline(points);
+  private curvePath(points: ChartPoint[], from: number, to: number, adjusted = false, context = this.context): string {
+    const timeline = this.timeline(points, context);
     if (!timeline) {
       return "";
     }
@@ -470,7 +480,7 @@ export class CurveSchedulerCurve extends LitElement {
     if (this.axis) inputs.push(...timeline.flatMap(([x]) => [x - (to - from) * 1e-9, x]).filter(x => x >= from && x <= to));
     for (const [i, minute] of [...new Set(inputs)].sort((a, b) => a - b).entries()) {
       const raw = clamp(interpolator.at(minute), this.min, this.max);
-      const value = adjusted ? clamp(roundToStep(clamp(roundToStep(raw, this.step) + this.offset, this.min, this.max), this.step), this.min, this.max) : raw;
+      const value = adjusted ? clamp(raw + this.offset, this.min, this.max) : raw;
       const x = this.xFor(minute).toFixed(1);
       const y = this.yFor(value).toFixed(1);
       if (this.mode === "step" && previous !== null && value !== previous) {
@@ -587,6 +597,31 @@ export class CurveSchedulerCurve extends LitElement {
     </div>`;
   }
 
+  private renderOriginalPoints() {
+    if (!this.referencePoints || this.editable) return nothing;
+    const originals = this.referencePoints;
+    const width = this.cycleEnd - this.domainStart;
+    return svg`
+      ${originals.map(([x, value], index) => {
+        const destination = this.pointPositions?.[index];
+        if (!destination || !this.displayPoints?.length || Math.abs(destination[0] - x) < 1e-9) return nothing;
+        const point = this.sourcePoints[index];
+        const anchor = point?.anchor ?? this.sourcePoints.find(p => p.id === point?.partner_of)?.anchor;
+        const end = destination[0];
+        const wraps = anchor?.shift_mode !== "direct" && Math.abs(end - x) > width / 2;
+        const segments = wraps ? (end > x ? [[x, this.domainStart], [this.cycleEnd, end]] : [[x, this.cycleEnd], [this.domainStart, end]]) : [[x, end]];
+        const y = this.yFor(clamp(value, this.min, this.max));
+        return segments.filter(([from, to]) => from !== to).map(([from, to]) => {
+          const tip = this.xFor(to);
+          const tail = tip - Math.sign(to - from) * 4;
+          return svg`<line class="shift-connector" x1=${this.xFor(from)} x2=${tip} y1=${y} y2=${y}></line>
+            <path class="shift-arrow" d=${`M${tail},${y - 2.5} L${tip},${y} L${tail},${y + 2.5}`}></path>`;
+        });
+      })}
+      ${originals.map(([x, value]) => svg`<circle class="original-marker" cx=${this.xFor(x)} cy=${this.yFor(clamp(value, this.min, this.max))} r="3"></circle>`)}
+    `;
+  }
+
   protected render() {
     const points = this.shownPoints;
     const solid = this.curvePath(points, this.domainStart, this.cycleEnd);
@@ -609,11 +644,13 @@ export class CurveSchedulerCurve extends LitElement {
           aria-hidden="true"
         >
           ${this.renderGrid()}
+          ${this.referencePoints ? svg`<path class="curve original-curve" d=${this.curvePath(this.referencePoints.map(([x, v]) => ({ x, v })), this.domainStart, this.domainEnd, false, this.referenceContext ?? null)} style="stroke: var(--secondary-text-color, #888); opacity: .65"><title>${this.language.startsWith("de") ? "Gespeicherte Originalkurve" : "Saved original curve"}</title></path>` : nothing}
+          ${this.renderOriginalPoints()}
           <path class="curve" d=${solid} style="stroke: ${this.color}"></path>
           ${dashed
             ? svg`<path class="curve continuation" d=${dashed} style="stroke: ${this.color}"></path>`
             : nothing}
-          ${this.offset !== 0 ? svg`<path class="curve offset-curve" d=${this.curvePath(points, this.domainStart, this.axis?.max ?? MINUTES_PER_DAY, true)} style="stroke: var(--secondary-text-color, #888); stroke-dasharray: 7 4"><title>${this.language.startsWith("de") ? "Kurvenwert mit Versatz" : "Curve value with offset"}</title></path>` : nothing}
+          ${this.offset !== 0 ? svg`<path class="curve offset-curve" d=${this.curvePath(points, this.domainStart, this.axis?.max ?? MINUTES_PER_DAY, true)} style=${`stroke: ${this.referencePoints ? this.color : "var(--secondary-text-color, #888)"}; stroke-dasharray: 7 4`}><title>${this.language.startsWith("de") ? "Kurvenwert mit Versatz" : "Curve value with offset"}</title></path>` : nothing}
           ${this.renderNow()}
           ${this._drag ? svg`
             <line class="guide" x1=${PAD_LEFT} x2=${this.xFor(this.xOf(points[this._drag.index]))} y1=${this.yFor(points[this._drag.index].v)} y2=${this.yFor(points[this._drag.index].v)}></line>
@@ -630,10 +667,21 @@ export class CurveSchedulerCurve extends LitElement {
         </svg>
         ${this.editable ? this.renderHandles(points) : nothing} ${this.renderTooltip()}
       </div>
+      ${this.showLegend ? html`<div class="legend" role="list" aria-label=${this.language.startsWith("de") ? "Kurvenlegende" : "Curve legend"}>
+        ${this.referencePoints?.length ? html`<span role="listitem"><i style="border-color:var(--secondary-text-color, #888);opacity:.65"></i>${this.language.startsWith("de") ? "Original" : "Raw"}</span>` : nothing}
+        ${points.length ? html`<span role="listitem"><i style=${`border-color:${this.color}`}></i>${this.referencePoints ? (this.language.startsWith("de") ? "Verschoben" : "Shifted") : (this.language.startsWith("de") ? "Original" : "Raw")}</span>` : nothing}
+        ${points.length && this.offset !== 0 ? html`<span role="listitem"><i style=${`border-color:${this.referencePoints ? this.color : "var(--secondary-text-color, #888)"};border-top-style:dashed`}></i>${this.referencePoints ? (this.language.startsWith("de") ? "Verschoben + Versatz" : "Shifted + offset") : (this.language.startsWith("de") ? "Original + Versatz" : "Raw + offset")}</span>` : nothing}
+      </div>` : nothing}
     `;
   }
 
   static styles = css`
+    .original-marker { fill:var(--secondary-text-color, #888); opacity:.65; pointer-events:none; }
+    .shift-arrow { fill:none; stroke:var(--secondary-text-color, #aaa); stroke-width:1; opacity:.5; pointer-events:none; }
+    .shift-connector { stroke:var(--secondary-text-color, #aaa); stroke-width:1; stroke-dasharray:3 5; opacity:.5; pointer-events:none; }
+    .legend { display:flex; flex-wrap:wrap; gap:6px 16px; margin:8px 0; font-size:12px; color:var(--secondary-text-color); }
+    .legend span { display:inline-flex; align-items:center; gap:6px; }
+    .legend i { display:inline-block; width:24px; border-top:2px solid; }
     .guide { stroke: var(--primary-color); stroke-dasharray: 4 3; stroke-width: 1; pointer-events: none; }
     :host {
       display: block;

@@ -10,7 +10,7 @@ async function mount(config: Partial<CurveSchedulerCardConfig>) {
   editor.setConfig({ ...base, ...config });
   document.body.append(editor);
   await editor.updateComplete;
-  const select = editor.shadowRoot!.querySelectorAll<HTMLSelectElement>("select")[2];
+  const select = editor.shadowRoot!.querySelector<HTMLSelectElement>('select[name="editor_mode"]')!;
   return { editor, select };
 }
 
@@ -49,4 +49,28 @@ it("updates after configuration changes and preserves the selected mode when reo
   expect(config.editor_mode).toBe("always");
   editor.remove();
   expect((await mount(config)).select.value).toBe("always");
+});
+
+it("enables the legend by default and persists its visibility setting", async () => {
+  const { editor } = await mount({ view: "graph" });
+  const checkbox = [...editor.shadowRoot!.querySelectorAll<HTMLLabelElement>('label.check')]
+    .find(e => e.textContent?.includes("Show graph legend"))!.querySelector('input')!;
+  expect(checkbox.checked).toBe(true);
+  const changed = vi.fn(); editor.addEventListener("config-changed", changed);
+  checkbox.checked = false; checkbox.dispatchEvent(new Event("change"));
+  expect((changed.mock.calls[0][0] as CustomEvent).detail.config.show_legend).toBe(false);
+});
+
+
+it("exposes editor and visibility controls without a View preset, preserving legacy configuration", async () => {
+  const { editor, select } = await mount({ view: "graph" });
+  expect(editor.shadowRoot!.querySelector('option[value="compact"]')).toBeNull();
+  expect(editor.shadowRoot!.querySelectorAll('select')).toHaveLength(2);
+  expect(select.value).toBe("hidden");
+  const changed = vi.fn(); editor.addEventListener("config-changed", changed);
+  select.value = "always"; select.dispatchEvent(new Event("change"));
+  const config = (changed.mock.calls[0][0] as CustomEvent).detail.config;
+  expect(config).toMatchObject({ view: "graph", editor_mode: "always" });
+  const labels = [...editor.shadowRoot!.querySelectorAll('label.check')];
+  expect(labels.find(e => e.textContent?.includes("Show title"))!.querySelector('input')!.checked).toBe(false);
 });

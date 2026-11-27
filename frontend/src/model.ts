@@ -26,7 +26,13 @@ export const PROFILE_COLORS = [
   "#7f8c8d",
 ];
 
-export interface SchedulePoint {
+export interface AnchorMetadata {
+  id?: string;
+  anchor?: { entity_id: string; shift_mode?: "shortest" | "direct" };
+  partner_of?: string;
+}
+
+export interface SchedulePoint extends AnchorMetadata {
   t: string;
   v: number;
 }
@@ -49,7 +55,7 @@ export interface ScheduleException {
   note?: string;
 }
 
-export interface NumericPoint { x: number; v: number; }
+export interface NumericPoint extends AnchorMetadata { x: number; v: number; }
 export interface AxisConfig { source: "time_of_day" | "day_of_week" | "month_of_year" | "sensor"; input_entity: string | null; min: number; max: number; step: number; wrap: boolean; }
 
 export interface Schedule {
@@ -84,6 +90,9 @@ export interface InstanceConfig {
 export type Reason = "fallback" | "condition" | "weekday" | "holiday" | "exception" | "override";
 
 export interface LiveState {
+  curve_available?: boolean;
+  curve_errors?: ValidationIssue[];
+  resolved_profiles?: Record<string, { points: [number, number][] | null; point_positions?: [number, number][]; errors: ValidationIssue[] }>;
   offset?: number;
   curve_value?: number | null;
   input_value?: number | null;
@@ -181,6 +190,23 @@ export function validatePoints(
   return issues;
 }
 
+export function validateAnchors(points: AnchorMetadata[], path: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const ids = new Set<string>();
+  const anchors = new Set(points.filter(p => p.anchor && p.id).map(p => p.id));
+  points.forEach((point, index) => {
+    const invalidId = point.id !== undefined && (typeof point.id !== "string" || !point.id || point.id.length > 64 || ids.has(point.id));
+    if (point.id) ids.add(point.id);
+    if (invalidId || (point.anchor && (!point.id || point.partner_of !== undefined ||
+      !/^(input_datetime|datetime|sensor)\.[a-z0-9_]+$/.test(point.anchor.entity_id) ||
+      !["shortest", "direct"].includes(point.anchor.shift_mode ?? "shortest"))) ||
+      (point.partner_of !== undefined && !anchors.has(point.partner_of))) {
+      issues.push({ code: "invalid_anchor", path: `${path}.${index}`, params: {} });
+    }
+  });
+  return issues;
+}
+
 export function validateSchedule(data: Schedule, min: number, max: number, axis?: AxisConfig): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
   const add = (code: string, path: string, params: Record<string, unknown> = {}) =>
@@ -197,6 +223,7 @@ export function validateSchedule(data: Schedule, min: number, max: number, axis?
   for (const id of ids) {
     const profile = profiles[id];
     const path = `profiles.${id}`;
+    issues.push(...validateAnchors(profile.points ?? [], `${path}.points`), ...validateAnchors(profile.curve ?? [], `${path}.curve`));
     if (!PROFILE_ID_RE.test(id)) {
       add("invalid_profile_id", path);
     }

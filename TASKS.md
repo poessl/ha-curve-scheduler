@@ -16,7 +16,7 @@ Live HA check: signed into the isolated instance on port 8124 and verified the
 sidebar editor renders the value/offset controls, per-plan Apply offset toggle
 and entity-condition activation option. Live API save/read/reload on the disabled Acceptance conditions clone preserved
 an entity condition and plan offset flag and selected the matching plan. Existing
-curves were left unchanged. See docs/ACCEPTANCE.md.
+curves were left unchanged.
 Unchecked items may be partially implemented; they remain open when their full
 validation or delivery scope is unfinished. At that checkpoint, no commits or pushes had been made.
 
@@ -248,7 +248,8 @@ Final offset edge-case evidence: tests/test_offset.py covers invalid/nonfinite
 readings, climate setpoint versus measured values, concurrent ticks, own delayed
 acknowledgments, plan opt-out/reapplication through actual writes and sensors,
 negative replacement offsets and clearing. Context-dropping devices with different
-rounding have the documented precision limitation in docs/OFFSET.md.
+rounding have the precision limitation described in the README’s
+"Keep manual target adjustments" section.
 
 Final checks: 140 backend tests passed; 100 frontend tests passed; Ruff check,
 Ruff formatting, mypy, TypeScript, ESLint and production build passed. English

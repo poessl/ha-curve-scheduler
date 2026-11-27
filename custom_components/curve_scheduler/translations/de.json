@@ -464,5 +464,11 @@
       "name": "Versatz zurücksetzen",
       "description": "Setzt den Versatz auf null zurück."
     }
+  },
+  "issues": {
+    "anchor_collision": {
+      "title": "Ankerpunkte überschneiden sich: {name}",
+      "description": "Die Kurve ist nicht verfügbar und schreibt keine Zielwerte. Quelle oder Anker-/Partnerzuordnung im Kurveneditor korrigieren. Der Hinweis verschwindet automatisch. Details: {detail}"
+    }
   }
 }

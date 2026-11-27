@@ -1,12 +1,27 @@
 # Curve Scheduler
 
-Curve Scheduler creates numeric schedules and heating curves for Home Assistant.
-Draw points to set how a value changes with **time of day**, **day of week**,
-**month of year**, or a **sensor reading**. Send the result to a target entity,
-or use the output sensors in your own automations.
+Curve Scheduler provides numeric schedules as curves for Home Assistant.
 
-Keep plans such as *Workday*, *Day off*, and *Away*, and choose when each applies.
-Edit them in the sidebar or on a dashboard, using touch, mouse, or keyboard.
+## Features
+
+- **Curves:** four input types; step, linear, smooth, or curve interpolation;
+  transitions across midnight; clamped or repeating numeric inputs.
+- **Datetime anchors:** shift individual points or groups along the time axis
+  from an alarm or other `datetime`, `input_datetime`, or datetime-valued `sensor`.
+  Supports daily and weekly curves, with collision detection and HA Repairs.
+- **Offsets:** retain manual target adjustments as a persistent output offset,
+  choose which plans apply it, and clear it to return to the curve's values.
+- **Plan selection:** weekday, month, time, holiday/Workday, entity-state, and
+  numeric conditions, combined with AND/OR/NOT. Date exceptions and manual
+  overrides take priority; overrides can expire through an action.
+- **Editing:** drag points or enter exact values, duplicate plans, undo/redo,
+  and save/discard. Changes appear in other open editors; conflicting saves
+  are detected.
+- **Output:** control `number`, `input_number`, `climate`, or `water_heater`
+  entities, or use sensors alone.
+- **Interface:** sidebar editor and compact, full, or graph-only dashboard cards;
+  English/German UI, light/dark themes, and phone layouts.
+
 
 **Requires Home Assistant 2026.11.3 or newer.** This is an independently maintained
 fork of [timzifer/ha-curve-scheduler](https://github.com/timzifer/ha-curve-scheduler).
@@ -30,22 +45,6 @@ the original, not alongside it.
 - [Reference](#reference) — settings, curve behavior, entities, and actions
 - [Developer guide](#developer-guide) — setup, architecture, checks, and APIs
 - [Project information](#project-information) — attribution, support, and license
-
-## Features
-
-- **Curves:** four input types; step, linear, smooth, or curve interpolation;
-  transitions across midnight; clamped or repeating numeric inputs.
-- **Plan selection:** weekday, month, time, holiday/Workday, entity-state, and
-  numeric conditions, combined with AND/OR/NOT. Date exceptions and manual
-  overrides take priority; overrides can expire through an action.
-- **Editing:** drag points or enter exact values, duplicate plans, undo/redo,
-  and save/discard. Changes appear in other open editors; conflicting saves
-  are detected.
-- **Output:** control `number`, `input_number`, `climate`, or `water_heater`
-  entities, or use sensors alone. Retain manual target adjustments as an offset,
-  with a choice of which plans use it.
-- **Interface:** sidebar editor and compact, full, or graph-only dashboard cards;
-  English/German UI, light/dark themes, and phone layouts.
 
 ## Getting started
 
@@ -146,6 +145,46 @@ Time points must be on a five-minute grid. Each plan supports 1–48 points,
 with up to 20 plans per curve. Duplicate times
 or X coordinates and values outside the configured range are rejected on save.
 Use one point for a constant plan.
+
+### Follow an alarm with anchor points
+
+Daily and weekly plans can move groups of points from an `input_datetime` or
+`datetime` entity, or a `sensor` with a datetime, date, or time state. Timestamp
+sensors such as a phone's next alarm are supported; numeric Unix timestamps are
+not interpreted as dates. Select a point in the graph or point table, set its role to
+**Anchor**, and choose the datetime source. Select other points and set their
+role to **Partner**, then choose that anchor. Multiple independent anchors are
+supported, including anchors without partners. Each partner follows one anchor;
+anchors cannot follow other anchors.
+
+The source sets the anchor's X coordinate. Partners move by the same difference;
+all Y values stay unchanged. **Shortest around cycle** is the default movement;
+**Direct difference** subtracts the saved coordinate from the source coordinate.
+For example, 23:00 to 01:00 is +2 hours with shortest movement and −22 hours with
+direct movement. Wrapping is allowed only when points do not cross or collide.
+
+Daily curves use the time component on every day that uses the plan. Weekly
+curves use weekday and time; a date-only helper changes the weekday while keeping
+the anchor's saved time. Full datetimes are converted to Home Assistant's local
+timezone. Resolved positions retain source precision, independently of editor
+snapping. Missing, unknown, unavailable or unusable sources leave their group at
+its saved positions; parsing failures produce a deduplicated warning in the log.
+
+The editor always shows saved coordinates. The main graph shows the original in
+gray, the shifted curve in the plan color, and the offset-adjusted shifted curve
+as a dashed line. Gray dots mark the original points, with faint horizontal
+dashed guides with small arrowheads pointing from original to shifted positions. **Apply offset**
+affects only the shifted output. Source updates
+do not change saved points or create unsaved edits. Deleting or demoting an
+anchor detaches its partners; copying a plan copies its local groups.
+
+If resolved points cross or coincide, the affected live curve becomes unavailable
+and stops writing target values. The card explains the failure, the log includes
+point coordinates and sources, and a Home Assistant Repair identifies the issue.
+Correct the source or group assignments to resume automatically and clear the
+Repair. Previewing a schedule does not create Repairs. Anchors are supported only
+on daily and weekly axes; remove weekly anchor assignments before switching that
+curve to a sensor or month axis.
 
 ### Activations
 
@@ -258,9 +297,9 @@ and target as the original: check **Curve settings → Configure** before enabli
 
 ### Add a dashboard card
 
-Edit a dashboard → **Add card** → **Curve Scheduler**, then select an instance.
-Choose **Compact** (active plan with an editor button), **Full** (editor open), or
-**Graph only** (chart with information and controls hidden by default).
+Edit a dashboard → **Add card** → **Curve Schedule**, then select an instance.
+Choose whether the **Editor** is hidden, opens with an Edit button, or stays
+always open. Use the individual visibility toggles for graph information and controls.
 
 See [dashboard card options](#dashboard-card-options) for display controls and YAML.
 
@@ -427,13 +466,14 @@ Mode, switch, offset and all saved plans survive restarts.
 | Card option | Effect |
 |---|---|
 | `entry_id`, `title` | Instance to show; optional title override |
-| `view: compact / full / graph` | Defaults for editor and information visibility |
+| `view: compact / full / graph` | Legacy YAML presets; retained for compatibility, not shown in the card editor |
 | `editor_mode: hidden / button / always` | Hide editor, open with Edit, or keep open; overrides view defaults |
 | `show_controls` | Mode selector and action buttons; independent of the editor and Edit button |
 | `show_title`, `show_summary`, `show_reason` | Title, current/next value summary, and plan-selection reason |
 | `show_input` | Input readout on numeric graphs |
+| `show_legend` | Show labels for the visible graph curves; defaults to `true` in all views |
 | `show_offset` | Stored nonzero offset readout; does not hide the dashed output curve |
-| `show_clear_offset` | Separate reset button above the graph; default off |
+| `show_clear_offset` | Reset button above the graph when the stored offset is nonzero; default off |
 | `allow_edit` | Allow non-admin users to open this card's editor; default on |
 
 All information toggles default on in Compact/Full and off in Graph only.
@@ -527,7 +567,7 @@ its setup runs `scripts/setup` to install dependencies and build the card.
 | `frontend/src/` | Shared Lit card/sidebar editor, conditions UI and TypeScript interpolation |
 | `frontend/demo/` | Isolated fixtures and reproducible screenshot capture |
 | `tests/`, `frontend/test/` | Backend and frontend regressions; shared interpolation vectors in `tests/vectors/` |
-| `docs/` | Behavior contracts and acceptance checks |
+| `docs/images/` | Screenshots used by this README |
 
 The backend validates schedules, selects plans, and writes target values. The
 Lit editor uses WebSocket commands to save schedules and receive updates.
@@ -542,8 +582,8 @@ update intervals are retained until reconfigured.
 
 Conditions reuse HA validation and logical evaluation, with date-aware adapters
 for weekday/month/holiday checks. Time conditions use the live clock, including
-in previews. See [condition evaluation](docs/CONDITIONS.md) and
-[offset behavior](docs/OFFSET.md) before changing these paths.
+in previews. See [Activations](#activations) and
+[Keep manual target adjustments](#keep-manual-target-adjustments) for behavior.
 
 ### Validation
 
@@ -566,7 +606,7 @@ python scripts/generate_vectors.py
 git diff -- tests/vectors/
 ```
 
-For manual testing, see the [recorded acceptance runs](docs/ACCEPTANCE.md).
+For manual testing, use the isolated Home Assistant instance described below.
 
 ### Run Home Assistant locally
 
