@@ -14,7 +14,7 @@ import math
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE, STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import ATTR_ENTITY_ID, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import (
     CALLBACK_TYPE,
     Context,
@@ -81,6 +81,7 @@ from .model import (
     validate_update,
 )
 from .store import ScheduleStore, migrate_data
+from .targets import read_target, target_command
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -223,6 +224,7 @@ class CurveSchedulerRuntime:
         tick_value, tick_unit = tick_settings(self.options)
         return {
             "target": self.target,
+            "target_attribute": self.options.get("target_attribute"),
             "watch_target": bool(self.options.get("watch_target", False)),
             "interval": self.interval,
             "output_tick": tick_value,
@@ -474,19 +476,10 @@ class CurveSchedulerRuntime:
             and new.context.id not in self._write_contexts
             and new.context.parent_id not in self._write_contexts
         ):
-            attribute = (
-                ATTR_TEMPERATURE
-                if self.target.split(".", 1)[0] in ("climate", "water_heater")
-                else None
-            )
-            before = old.attributes.get(attribute) if attribute else old.state
-            after = new.attributes.get(attribute) if attribute else new.state
-            try:
-                value = float(after) if after is not None else None
-            except TypeError, ValueError:
-                value = None
+            before = read_target(old, self.options)
+            value = read_target(new, self.options)
             if (
-                before != after
+                before != value
                 and value is not None
                 and math.isfinite(value)
                 and (
@@ -808,17 +801,7 @@ class CurveSchedulerRuntime:
     def target_value(self) -> float | None:
         """Return the current value of the target entity (if any)."""
         state = self.hass.states.get(self.target) if self.target else None
-        if state is None:
-            return None
-        domain = self.target.split(".", 1)[0]
-        raw: Any = state.state
-        if domain in ("climate", "water_heater"):
-            raw = state.attributes.get(ATTR_TEMPERATURE)
-        try:
-            value = float(raw)
-            return value if math.isfinite(value) else None
-        except TypeError, ValueError:
-            return None
+        return read_target(state, self.options)
 
     def target_available(self) -> bool:
         """Return whether the target can be written."""
@@ -935,6 +918,9 @@ class CurveSchedulerRuntime:
                 self._unavailable_warned = True
             return
         self._unavailable_warned = False
+        state = self.hass.states.get(self.target)
+        assert state is not None
+        service, data, value = target_command(state, self.options, value)
         current = self.target_value()
         if current is not None:
             difference = abs(current - value)
@@ -943,10 +929,6 @@ class CurveSchedulerRuntime:
             if not force and self.threshold > 0 and difference < self.threshold:
                 return
         domain = self.target.split(".", 1)[0]
-        if domain in ("number", "input_number"):
-            service, data = "set_value", {"value": value}
-        else:
-            service, data = "set_temperature", {ATTR_TEMPERATURE: value}
         context = Context()
         self._write_contexts.append(context.id)
         try:

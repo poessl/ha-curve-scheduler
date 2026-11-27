@@ -114,6 +114,13 @@
             }
           }
         }
+      },
+      "light_target": {
+        "title": "Light attribute",
+        "description": "Choose one numeric attribute for this curve. Other color components are preserved when available. Commands can turn the light on; brightness 0 turns it off.",
+        "data": {
+          "target_attribute": "Attribute"
+        }
       }
     },
     "error": {
@@ -132,9 +139,10 @@
       "invalid_tick_unit": "Choose a valid time unit."
     },
     "abort": {
-      "already_configured": "This target already has a time profile.",
+      "already_configured": "A curve is already configured for this target attribute.",
       "entry_not_found": "The source curve is not loaded. Refresh the curve list.",
-      "name_required": "Enter a name containing 1–100 characters."
+      "name_required": "Enter a name containing 1–100 characters.",
+      "light_not_dimmable": "This light supports only on/off and has no numeric attribute for a curve."
     }
   },
   "options": {
@@ -249,6 +257,13 @@
             }
           }
         }
+      },
+      "light_target": {
+        "title": "Light attribute",
+        "description": "Choose one numeric attribute for this curve. Other color components are preserved when available. Commands can turn the light on; brightness 0 turns it off.",
+        "data": {
+          "target_attribute": "Attribute"
+        }
       }
     },
     "error": {
@@ -265,6 +280,9 @@
       "input_is_target": "Input and target must differ to avoid an output feeding back into its own input.",
       "invalid_input_decimals": "Enter a whole number from 0 to 6.",
       "invalid_tick_unit": "Choose a valid time unit."
+    },
+    "abort": {
+      "light_not_dimmable": "This light supports only on/off and has no numeric attribute for a curve."
     }
   },
   "selector": {
@@ -292,6 +310,30 @@
         "days": "Days",
         "weeks": "Weeks",
         "months": "Months"
+      }
+    },
+    "target_attribute": {
+      "options": {
+        "brightness_pct": "Brightness (%)",
+        "brightness": "Brightness (0–255)",
+        "color_temp_kelvin": "Color temperature (Kelvin)",
+        "white": "White mode level (0–255)",
+        "hs_hue": "Hue (HS, 0–360°)",
+        "hs_saturation": "Saturation (HS, 0–100%)",
+        "xy_x": "X component (XY)",
+        "xy_y": "Y component (XY)",
+        "rgb_red": "Red (RGB, 0–255)",
+        "rgb_green": "Green (RGB, 0–255)",
+        "rgb_blue": "Blue (RGB, 0–255)",
+        "rgbw_red": "Red (RGBW, 0–255)",
+        "rgbw_green": "Green (RGBW, 0–255)",
+        "rgbw_blue": "Blue (RGBW, 0–255)",
+        "rgbw_white": "White (RGBW, 0–255)",
+        "rgbww_red": "Red (RGBWW, 0–255)",
+        "rgbww_green": "Green (RGBWW, 0–255)",
+        "rgbww_blue": "Blue (RGBWW, 0–255)",
+        "rgbww_cold_white": "Cold white (RGBWW, 0–255)",
+        "rgbww_warm_white": "Warm white (RGBWW, 0–255)"
       }
     }
   },

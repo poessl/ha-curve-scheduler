@@ -79,6 +79,7 @@ export interface InstanceConfig {
   output_tick?: number;
   output_tick_unit?: "seconds" | "minutes" | "hours" | "days" | "weeks" | "months";
   target: string;
+  target_attribute?: string | null;
   interval: number;
   interpolation: Mode;
   min: number;

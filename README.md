@@ -17,7 +17,7 @@ Curve Scheduler provides numeric schedules as curves for Home Assistant.
 - **Editing:** drag points or enter exact values, duplicate plans, undo/redo,
   and save/discard. Changes appear in other open editors; conflicting saves
   are detected.
-- **Output:** control `number`, `input_number`, `climate`, or `water_heater`
+- **Output:** control `number`, `input_number`, `climate`, `water_heater`, or `light`
   entities, or use sensors alone.
 - **Interface:** sidebar editor and compact, full, or graph-only dashboard cards;
   English/German UI, light/dark themes, and phone layouts.
@@ -74,6 +74,7 @@ Curve Scheduler**.
 1. Choose a name, an optional **Target**, and the **X-axis source**. Choose
    **Time of day** for a daily schedule. Leave Target empty to try a curve
    without controlling a device.
+   For a light, choose its numeric **Attribute** in the next step.
 2. Set output limits and units. See [settings and defaults](#settings-and-defaults)
    for the remaining options.
 3. Complete setup. One flat *Default* plan is created and selected as the fallback,
@@ -259,6 +260,30 @@ with unsaved changes. If somebody else saved in the meantime, the card shows
 After saving, the output is recalculated and applied immediately when enabled
 and the input and target are available.
 
+### Light targets
+
+Select a light as the target, then choose one numeric attribute:
+
+- Brightness as a percentage or a native 0–255 level.
+- Color temperature in Kelvin, using the light's advertised limits.
+- Hue or saturation (HS), red/green/blue (RGB), or X/Y (XY).
+- RGBW and RGBWW components, including white channels, when supported.
+- White mode level when supported.
+
+Home Assistant converts HS, RGB and XY commands to the device's supported color
+mode. RGBW/RGBWW channels are offered only for lights supporting those modes.
+On/off-only lights have no numeric control and cannot be used as curve targets.
+When capabilities are unavailable, all controls are offered for manual selection.
+
+One curve controls one attribute. Separate curves can control different attributes
+of the same light; duplicate assignments to the same attribute are prevented.
+Each color command preserves the other components reported by the light. If a
+color is missing, HS starts at hue 0 and saturation 100%, XY at neutral white,
+and RGB channels at white with extra white channels at zero. Writes use
+`light.turn_on`, so they can turn lights on; brightness 0 turns them off.
+Values are rounded and clamped to the control's native range before writing.
+Watch-target offsets use the selected attribute and ignore changes to other channels.
+
 ### Keep manual target adjustments
 
 Enable **Watch target changes as offset** under **Curve settings → Configure**.
@@ -323,7 +348,7 @@ axes) must be chosen.
 | Setting | Meaning | Default |
 |---|---|---|
 | Name | e.g. "Circulation" | – |
-| Target | Optional: `number`, `input_number`, `climate` (attribute `temperature`) or `water_heater` | – |
+| Target | Optional: `number`, `input_number`, `climate` (attribute `temperature`), `water_heater`, or `light` | – |
 | Output tick / Time unit | time between input sampling and output updates; seconds, minutes, hours, days, weeks, or months (up to about 100 years) | 5 minutes |
 | X-axis source | time of day / day of week / month of year / sensor | time of day |
 | Input entity | numeric state from `sensor`, `input_number` or `number`; required for a sensor axis | – |

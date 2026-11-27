@@ -8,6 +8,7 @@ DOMAIN: Final = "curve_scheduler"
 
 # Config entry keys
 CONF_TARGET: Final = "target_entity"
+CONF_TARGET_ATTRIBUTE: Final = "target_attribute"
 CONF_INTERVAL: Final = "interval"
 CONF_INTERPOLATION: Final = "interpolation"
 CONF_MIN: Final = "min_value"
@@ -26,7 +27,7 @@ DEFAULT_THRESHOLD: Final = 0.0
 
 INTERPOLATION_MODES: Final = ["step", "linear", "smooth", "curve"]
 
-TARGET_DOMAINS: Final = ["number", "input_number", "climate", "water_heater"]
+TARGET_DOMAINS: Final = ["number", "input_number", "climate", "water_heater", "light"]
 HOLIDAY_DOMAINS: Final = ["binary_sensor", "calendar"]
 
 # Data model limits (mirrored in frontend/src/model.ts)

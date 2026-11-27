@@ -114,6 +114,13 @@
             }
           }
         }
+      },
+      "light_target": {
+        "title": "Lichtattribut",
+        "description": "Ein numerisches Attribut für diese Kurve wählen. Andere Farbkomponenten werden beibehalten, soweit verfügbar. Befehle können das Licht einschalten; Helligkeit 0 schaltet es aus.",
+        "data": {
+          "target_attribute": "Attribut"
+        }
       }
     },
     "error": {
@@ -132,9 +139,10 @@
       "invalid_tick_unit": "Bitte eine gültige Zeiteinheit wählen."
     },
     "abort": {
-      "already_configured": "Für dieses Ziel gibt es bereits ein Zeitprofil.",
+      "already_configured": "Für dieses Zielattribut ist bereits eine Kurve eingerichtet.",
       "entry_not_found": "Die ursprüngliche Kurve ist nicht geladen. Bitte die Liste aktualisieren.",
-      "name_required": "Bitte einen Namen mit 1–100 Zeichen eingeben."
+      "name_required": "Bitte einen Namen mit 1–100 Zeichen eingeben.",
+      "light_not_dimmable": "Dieses Licht unterstützt nur Ein/Aus und hat kein numerisches Attribut für eine Kurve."
     }
   },
   "options": {
@@ -249,6 +257,13 @@
             }
           }
         }
+      },
+      "light_target": {
+        "title": "Lichtattribut",
+        "description": "Ein numerisches Attribut für diese Kurve wählen. Andere Farbkomponenten werden beibehalten, soweit verfügbar. Befehle können das Licht einschalten; Helligkeit 0 schaltet es aus.",
+        "data": {
+          "target_attribute": "Attribut"
+        }
       }
     },
     "error": {
@@ -265,6 +280,9 @@
       "input_is_target": "Eingang und Ziel müssen unterschiedlich sein, um eine Rückkopplung zu vermeiden.",
       "invalid_input_decimals": "Eine ganze Zahl von 0 bis 6 eingeben.",
       "invalid_tick_unit": "Bitte eine gültige Zeiteinheit wählen."
+    },
+    "abort": {
+      "light_not_dimmable": "Dieses Licht unterstützt nur Ein/Aus und hat kein numerisches Attribut für eine Kurve."
     }
   },
   "selector": {
@@ -292,6 +310,30 @@
         "days": "Tage",
         "weeks": "Wochen",
         "months": "Monate"
+      }
+    },
+    "target_attribute": {
+      "options": {
+        "brightness_pct": "Helligkeit (%)",
+        "brightness": "Helligkeit (0–255)",
+        "color_temp_kelvin": "Farbtemperatur (Kelvin)",
+        "white": "Weißmodus (0–255)",
+        "hs_hue": "Farbton (HS, 0–360°)",
+        "hs_saturation": "Sättigung (HS, 0–100%)",
+        "xy_x": "X-Komponente (XY)",
+        "xy_y": "Y-Komponente (XY)",
+        "rgb_red": "Rot (RGB, 0–255)",
+        "rgb_green": "Grün (RGB, 0–255)",
+        "rgb_blue": "Blau (RGB, 0–255)",
+        "rgbw_red": "Rot (RGBW, 0–255)",
+        "rgbw_green": "Grün (RGBW, 0–255)",
+        "rgbw_blue": "Blau (RGBW, 0–255)",
+        "rgbw_white": "Weiß (RGBW, 0–255)",
+        "rgbww_red": "Rot (RGBWW, 0–255)",
+        "rgbww_green": "Grün (RGBWW, 0–255)",
+        "rgbww_blue": "Blau (RGBWW, 0–255)",
+        "rgbww_cold_white": "Kaltweiß (RGBWW, 0–255)",
+        "rgbww_warm_white": "Warmweiß (RGBWW, 0–255)"
       }
     }
   },

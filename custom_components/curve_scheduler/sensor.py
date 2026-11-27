@@ -42,7 +42,8 @@ class SetpointSensor(CurveSchedulerEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(runtime, "setpoint", "setpoint", "sensor")
         self._attr_native_unit_of_measurement = runtime.unit
-        if runtime.unit in TEMPERATURE_UNITS:
+        # Light color temperature stays in Kelvin, without conversion to room-temperature units.
+        if runtime.unit in TEMPERATURE_UNITS and not runtime.target.startswith("light."):
             self._attr_device_class = SensorDeviceClass.TEMPERATURE
         self._attr_suggested_display_precision = _precision(runtime.step)
 
