@@ -38,11 +38,11 @@
           "interpolation": "How the value changes between two points.",
           "min_value": "Lowest allowed value. Also the bottom of the chart.",
           "max_value": "Highest allowed value. Also the top of the chart.",
-          "step": "The value is rounded to this step before writing, e.g. 0.5.",
-          "unit": "Shown in the card, e.g. °C.",
+          "step": "Rounds the sensor output and optional target value to this step, e.g. 0.5.",
+          "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit.",
           "holiday_source": "Optional: a Workday binary sensor or a calendar (every event is a day off).",
-          "write_threshold": "Only write when the value changed by at least this amount (0 = on every change).",
-          "output_tick_seconds": "Sample input and update the output every 1–86400 seconds; a target is optional.",
+          "write_threshold": "Optional target only: write when the value changes by at least this amount (0 = every change). Does not affect output sensors.",
+          "output_tick_seconds": "Recalculates and updates the output sensors every 1–86400 seconds, including without a target. Also applies to an optional target.",
           "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
           "x_step": "Point movement resolution; the sampled input is not rounded.",
           "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
@@ -65,21 +65,20 @@
             }
           },
           "target": {
-            "name": "Target and watching",
+            "name": "Optional target",
             "data": {
               "watch_target": "Watch target changes as offset",
-              "output_tick_seconds": "Output tick (seconds)",
               "write_threshold": "Write threshold"
             },
             "data_description": {
               "watch_target": "Keep external target adjustments as a persistent additive offset.",
-              "output_tick_seconds": "Sample input and update the output every 1–86400 seconds; a target is optional.",
-              "write_threshold": "Only write when the value changed by at least this amount (0 = on every change)."
+              "write_threshold": "Optional target only: write when the value changes by at least this amount (0 = every change). Does not affect output sensors."
             }
           },
           "output": {
             "name": "Output calculation",
             "data": {
+              "output_tick_seconds": "Output tick (seconds)",
               "interpolation": "Transition between points",
               "min_value": "Minimum",
               "max_value": "Maximum",
@@ -87,11 +86,12 @@
               "unit": "Unit"
             },
             "data_description": {
+              "output_tick_seconds": "Recalculates and updates the output sensors every 1–86400 seconds, including without a target. Also applies to an optional target.",
               "interpolation": "How the value changes between two points.",
               "min_value": "Lowest allowed value. Also the bottom of the chart.",
               "max_value": "Highest allowed value. Also the top of the chart.",
-              "step": "The value is rounded to this step before writing, e.g. 0.5.",
-              "unit": "Shown in the card, e.g. °C."
+              "step": "Rounds the sensor output and optional target value to this step, e.g. 0.5.",
+              "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit."
             }
           },
           "graph": {
@@ -161,11 +161,11 @@
           "interpolation": "How the value changes between two points.",
           "min_value": "Lowest allowed value. Also the bottom of the chart.",
           "max_value": "Highest allowed value. Also the top of the chart.",
-          "step": "The value is rounded to this step before writing, e.g. 0.5.",
-          "unit": "Shown in the card, e.g. °C.",
+          "step": "Rounds the sensor output and optional target value to this step, e.g. 0.5.",
+          "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit.",
           "holiday_source": "Optional: a Workday binary sensor or a calendar (every event is a day off).",
-          "write_threshold": "Only write when the value changed by at least this amount (0 = on every change).",
-          "output_tick_seconds": "Sample input and update the output every 1–86400 seconds; a target is optional.",
+          "write_threshold": "Optional target only: write when the value changes by at least this amount (0 = every change). Does not affect output sensors.",
+          "output_tick_seconds": "Recalculates and updates the output sensors every 1–86400 seconds, including without a target. Also applies to an optional target.",
           "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
           "x_step": "Point movement resolution; the sampled input is not rounded.",
           "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
@@ -188,23 +188,22 @@
             }
           },
           "target": {
-            "name": "Target and watching",
+            "name": "Optional target",
             "data": {
               "target_entity": "Target",
               "watch_target": "Watch target changes as offset",
-              "output_tick_seconds": "Output tick (seconds)",
               "write_threshold": "Write threshold"
             },
             "data_description": {
               "target_entity": "Optional. Without a target the calculated output is available as a sensor.",
               "watch_target": "Keep external target adjustments as a persistent additive offset.",
-              "output_tick_seconds": "Sample input and update the output every 1–86400 seconds; a target is optional.",
-              "write_threshold": "Only write when the value changed by at least this amount (0 = on every change)."
+              "write_threshold": "Optional target only: write when the value changes by at least this amount (0 = every change). Does not affect output sensors."
             }
           },
           "output": {
             "name": "Output calculation",
             "data": {
+              "output_tick_seconds": "Output tick (seconds)",
               "interpolation": "Transition between points",
               "min_value": "Minimum",
               "max_value": "Maximum",
@@ -212,11 +211,12 @@
               "unit": "Unit"
             },
             "data_description": {
+              "output_tick_seconds": "Recalculates and updates the output sensors every 1–86400 seconds, including without a target. Also applies to an optional target.",
               "interpolation": "How the value changes between two points.",
               "min_value": "Lowest allowed value. Also the bottom of the chart.",
               "max_value": "Highest allowed value. Also the top of the chart.",
-              "step": "The value is rounded to this step before writing, e.g. 0.5.",
-              "unit": "Shown in the card, e.g. °C."
+              "step": "Rounds the sensor output and optional target value to this step, e.g. 0.5.",
+              "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit."
             }
           },
           "graph": {

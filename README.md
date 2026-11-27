@@ -272,7 +272,9 @@ Jump to [settings](#settings-and-defaults), [input examples](#use-a-weekly-senso
 ### Settings and defaults
 
 Open **Curve settings → Configure**, choose the X-axis source, then edit the
-applicable Input, Target, Output, and Graph settings. The name is chosen at setup.
+applicable Input, Output, optional Target, and Graph settings. Calculation and
+graph settings are prefilled; only the name at setup and a sensor input (for sensor
+axes) must be chosen.
 
 | Setting | Meaning | Default |
 |---|---|---|
@@ -281,17 +283,17 @@ applicable Input, Target, Output, and Graph settings. The name is chosen at setu
 | Output tick | seconds between input sampling and output updates (1–86400) | 300 |
 | X-axis source | time of day / day of week / month of year / sensor | time of day |
 | Input entity | numeric state from `sensor`, `input_number` or `number`; required for a sensor axis | – |
-| X minimum / maximum | numeric axis limits (upper limit exclusive when wrapping) | sensor: 0 / 100; week: 1 / 8; month: 1 / 13 |
-| X point resolution | snapping for point movement; input samples are not rounded | sensor: 0.1; week/month: 0.01 |
-| Wrap input | periodic continuation; otherwise clamp out-of-range input | sensor: off; week/month: on |
+| X minimum / maximum | sensor axis limits (upper limit exclusive when wrapping); calendar limits are fixed | sensor: 0 / 100 |
+| X point resolution | sensor axis snapping for point movement; input samples are not rounded | 0.1 |
+| Wrap input | sensor axis only: periodic continuation; otherwise clamp out-of-range input | off |
 | Transition between points | step / linear / smooth / curve | curve |
 | Minimum / Maximum | allowed range; also the chart's axis | taken from the target, else 20 / 70 |
 | X-axis label interval | 0 = automatic; otherwise minutes for time of day, X units for numeric inputs | 0 |
 | Y-axis label interval | 0 = automatic; otherwise output units | 0 |
-| Rounding step | value is rounded before writing | 0.5 |
-| Unit | shown in the card | taken from the target |
+| Rounding step | rounds the sensor output and optional target value | 0.5 |
+| Unit | unit for sensors and chart; HA unit picker also accepts custom units or no unit | taken from the target |
 | Watch target changes as offset | retain external target adjustments until cleared | off |
-| Write threshold | only write when the value changed by at least this much | 0 |
+| Write threshold | optional target only; write when the value changed by at least this much | 0 |
 
 ### Use a weekly, sensor or seasonal curve
 
@@ -300,12 +302,13 @@ Plans, activations, exceptions, and manual overrides work with all four inputs.
 | X-axis source | Coordinates and behavior |
 |---|---|
 | Time of day | One daily curve; connects to the next day's selected plan across midnight |
-| Day of week | Monday = 1 through Sunday = 7, with fractions for time within each day; default range [1, 8), wrapping to Monday |
-| Month of year | January = 1 through December = 12, with progress through each month's actual length; default range [1, 13), wrapping to January |
+| Day of week | Monday = 1 through Sunday = 7, with fractions for time within each day; fixed range [1, 8), wrapping to Monday |
+| Month of year | January = 1 through December = 12, with progress through each month's actual length; fixed range [1, 13), wrapping to January |
 | Sensor | Current numeric entity state; default range 0–100, clamped unless wrapping is enabled |
 
-Calendar inputs use HA local time and need no input entity. X point resolution
-snaps edits, not the running input: the default 0.01 on a week axis is 14.4
+Calendar inputs use HA local time and need no input entity. Their range, point
+resolution, and wrapping are defined automatically and cannot be changed. X point
+resolution snaps edits, not the running input: the default 0.01 on a week axis is 14.4
 minutes. With wrapping, the upper limit is excluded; use 1 rather than 8 for the
 Monday boundary. Without wrapping, the curve holds its endpoint values.
 

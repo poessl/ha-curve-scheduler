@@ -21,7 +21,8 @@ def axis_config(options: dict[str, Any]) -> dict[str, Any]:
         "day_of_week": (1.0, 8.0, 0.01, True),
         "sensor": (0.0, 100.0, 0.1, False),
     }[source]
-    # Time uses the existing midnight-aware profile engine.
+    # Calendar axes always describe the full period, including legacy entries.
+    options = options if source == "sensor" else {}
     return {
         "source": source,
         "input_entity": options.get("input_entity") or None,

@@ -51,6 +51,7 @@ async def test_full_flow(hass: HomeAssistant, target: str) -> None:
     }
     assert schema[CONF_MIN] == 20.0
     assert schema[CONF_MAX] == 70.0
+    assert result["data_schema"](form_defaults(result))["output"][CONF_UNIT] == "°C"
 
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"], group_settings(SETTINGS)
@@ -106,7 +107,12 @@ async def test_options_flow(hass: HomeAssistant, target: str) -> None:
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
         group_settings(
-            {**SETTINGS, CONF_TARGET: target, CONF_TICK: 10, CONF_INTERPOLATION: "linear"}
+            {
+                **SETTINGS,
+                CONF_TARGET: target,
+                CONF_TICK: 10,
+                CONF_INTERPOLATION: "linear",
+            }
         ),
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
@@ -123,24 +129,32 @@ async def test_options_flow_rejects_used_target(hass: HomeAssistant, target: str
         result["flow_id"], group_settings({"axis_source": "time_of_day"})
     )
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], group_settings({**SETTINGS, CONF_TARGET: entry.data[CONF_TARGET]})
+        result["flow_id"],
+        group_settings({**SETTINGS, CONF_TARGET: entry.data[CONF_TARGET]}),
     )
     assert result["errors"] == {CONF_TARGET: "target_in_use"}
 
 
-def group_settings(values):
+def group_settings(values, *, include_target=True):
     if "min_value" not in values:
         return values
     groups = {
         "input": ["input_entity", "x_min", "x_max", "x_step", "x_wrap"],
-        "target": ["target_entity", "watch_target", "output_tick_seconds", "write_threshold"],
-        "output": ["interpolation", "min_value", "max_value", "step", "unit"],
+        "output": [
+            "output_tick_seconds",
+            "interpolation",
+            "min_value",
+            "max_value",
+            "step",
+            "unit",
+        ],
+        "target": ["target_entity", "watch_target", "write_threshold"],
         "graph": ["x_label_step", "y_label_step"],
     }
     return {
         group: {key: values[key] for key in keys if key in values}
         for group, keys in groups.items()
-        if any(key in values for key in keys)
+        if any(key in values for key in keys) and (group != "target" or include_target)
     }
 
 
@@ -165,6 +179,118 @@ def test_settings_sections_keep_related_fields_together():
         {**SETTINGS, "axis_source": "sensor", "input_entity": "sensor.source"}, True
     )
     groups = {str(key): value for key, value in schema.schema.items()}
-    assert list(groups) == ["input", "target", "output", "graph"]
+    assert list(groups) == ["input", "output", "target", "graph"]
     assert next(map(str, groups["input"].schema.schema)) == "input_entity"
-    assert list(map(str, groups["target"].schema.schema))[:2] == ["target_entity", "watch_target"]
+    assert list(map(str, groups["target"].schema.schema))[:2] == [
+        "target_entity",
+        "watch_target",
+    ]
+
+
+def form_defaults(result):
+    """Use the same serialized outer defaults as HA's configuration dialog."""
+    from homeassistant.helpers import config_validation as cv
+
+    return {
+        field["name"]: field["default"]
+        for field in vol.to_field_list(
+            result["data_schema"], custom_serializer=cv.custom_serializer
+        )
+        if "default" in field
+    }
+
+
+async def test_sensor_only_setup_needs_no_manual_settings(hass: HomeAssistant) -> None:
+    from homeassistant.helpers import selector
+
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    flow = await hass.config_entries.flow.async_configure(flow["flow_id"], {"name": "Example"})
+    defaults = form_defaults(flow)
+    assert set(defaults) == {"output", "graph"}
+    assert defaults["output"][CONF_TICK] == 300
+    assert defaults["output"][CONF_STEP] == 0.5
+    assert defaults["graph"] == {"x_label_step": 0, "y_label_step": 0}
+    fields = schema_fields(flow["data_schema"])
+    assert isinstance(fields[CONF_UNIT], selector.UnitOfMeasurementSelector)
+    assert all(not isinstance(key, vol.Required) for key in fields)
+    # Empty sections use their field defaults through HA's backend schema.
+    submission = flow["data_schema"]({"output": {}, "graph": {}})
+    result = await hass.config_entries.flow.async_configure(flow["flow_id"], submission)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert result["options"][CONF_THRESHOLD] == 0
+    assert result["result"].runtime_data.target == ""
+    assert hass.states.get("sensor.example_setpoint").state != "unavailable"
+
+
+async def test_reopen_settings_preserves_every_value(hass: HomeAssistant, target: str) -> None:
+    saved = {
+        **SETTINGS,
+        "axis_source": "sensor",
+        "input_entity": "sensor.outdoor",
+        "x_min": -20,
+        "x_max": 40,
+        "x_step": 0.25,
+        "x_wrap": False,
+        "output_tick_seconds": 37,
+        "watch_target": True,
+        "write_threshold": 1.25,
+        "x_label_step": 10,
+        "y_label_step": 5,
+    }
+    entry = await setup_entry(hass, make_entry(target, **saved))
+    before = entry.runtime_data.schedule_dict()
+    for _ in range(2):
+        flow = await hass.config_entries.options.async_init(entry.entry_id)
+        flow = await hass.config_entries.options.async_configure(
+            flow["flow_id"], {"axis_source": "sensor"}
+        )
+        defaults = form_defaults(flow)
+        assert defaults == group_settings({**saved, CONF_TARGET: target})
+        result = await hass.config_entries.options.async_configure(flow["flow_id"], defaults)
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+        assert entry.data[CONF_TARGET] == target
+        assert entry.runtime_data.schedule_dict() == before
+
+
+async def test_optional_target_and_unit_can_be_cleared(hass: HomeAssistant, target: str) -> None:
+    entry = await setup_entry(hass, make_entry(target, watch_target=True))
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {"axis_source": "time_of_day"}
+    )
+    defaults = form_defaults(flow)
+    defaults["target"].pop(CONF_TARGET)
+    defaults["output"][CONF_UNIT] = None
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], defaults)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.runtime_data.target == ""
+    assert entry.runtime_data.unit is None
+
+
+async def test_invalid_settings_keep_form_values(hass: HomeAssistant) -> None:
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    flow = await hass.config_entries.flow.async_configure(flow["flow_id"], {"name": "Example"})
+    values = form_defaults(flow)
+    values["output"].update(min_value=80, max_value=30, unit="custom unit")
+    result = await hass.config_entries.flow.async_configure(flow["flow_id"], values)
+    assert result["errors"][CONF_MAX] == "max_not_greater"
+    assert form_defaults(result) == values
+
+
+async def test_sensor_only_options_defaults_can_be_submitted(hass: HomeAssistant) -> None:
+    entry = await setup_entry(hass, make_entry("", unit=""))
+    for _ in range(2):
+        flow = await hass.config_entries.options.async_init(entry.entry_id)
+        flow = await hass.config_entries.options.async_configure(
+            flow["flow_id"], {"axis_source": "time_of_day"}
+        )
+        defaults = form_defaults(flow)
+        assert CONF_TARGET not in defaults["target"]
+        result = await hass.config_entries.options.async_configure(flow["flow_id"], defaults)
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+        assert entry.runtime_data.target == ""
+        assert entry.runtime_data.unit is None

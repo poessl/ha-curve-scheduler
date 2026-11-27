@@ -38,11 +38,11 @@
           "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
           "min_value": "Kleinster erlaubter Wert. Gleichzeitig der untere Rand des Diagramms.",
           "max_value": "Größter erlaubter Wert. Gleichzeitig der obere Rand des Diagramms.",
-          "step": "Vor dem Schreiben wird auf diese Schrittweite gerundet, z. B. 0,5.",
-          "unit": "Wird in der Karte angezeigt, z. B. °C.",
+          "step": "Rundet den Sensor-Ausgabewert und den optionalen Zielwert auf diese Schrittweite, z. B. 0.5.",
+          "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen.",
           "holiday_source": "Optional: ein Arbeitstag-Binärsensor (Workday) oder ein Kalender (jedes Ereignis = freier Tag).",
-          "write_threshold": "Nur schreiben, wenn sich der Wert um mindestens diesen Betrag geändert hat (0 = bei jeder Änderung).",
-          "output_tick_seconds": "Eingang lesen und Ausgang alle 1–86400 Sekunden aktualisieren; ein Ziel ist optional.",
+          "write_threshold": "Nur für das optionale Ziel: Schreiben ab dieser Wertänderung (0 = bei jeder Änderung). Beeinflusst die Ausgabesensoren nicht.",
+          "output_tick_seconds": "Berechnet und aktualisiert die Ausgabesensoren alle 1–86400 Sekunden, auch ohne Ziel. Gilt ebenfalls für ein optionales Ziel.",
           "x_wrap": "Obergrenze ist beim Umlauf exklusiv. Sonst werden Werte an den Grenzen begrenzt.",
           "x_step": "Schrittweite beim Verschieben von Punkten; der Eingang wird nicht gerundet.",
           "x_label_step": "0 = automatisch. Tageszeit: Minuten; sonst X-Einheiten. Unabhängig vom Einrasten der Punkte.",
@@ -65,21 +65,20 @@
             }
           },
           "target": {
-            "name": "Ziel und Überwachung",
+            "name": "Optionales Ziel",
             "data": {
               "watch_target": "Zieländerungen als Versatz übernehmen",
-              "output_tick_seconds": "Ausgangsintervall (Sekunden)",
               "write_threshold": "Schreib-Schwelle"
             },
             "data_description": {
               "watch_target": "Externe Sollwertänderungen als dauerhaften Versatz übernehmen.",
-              "output_tick_seconds": "Eingang lesen und Ausgang alle 1–86400 Sekunden aktualisieren; ein Ziel ist optional.",
-              "write_threshold": "Nur schreiben, wenn sich der Wert um mindestens diesen Betrag geändert hat (0 = bei jeder Änderung)."
+              "write_threshold": "Nur für das optionale Ziel: Schreiben ab dieser Wertänderung (0 = bei jeder Änderung). Beeinflusst die Ausgabesensoren nicht."
             }
           },
           "output": {
             "name": "Ausgangsberechnung",
             "data": {
+              "output_tick_seconds": "Ausgangsintervall (Sekunden)",
               "interpolation": "Übergang zwischen Punkten",
               "min_value": "Minimum",
               "max_value": "Maximum",
@@ -87,11 +86,12 @@
               "unit": "Einheit"
             },
             "data_description": {
+              "output_tick_seconds": "Berechnet und aktualisiert die Ausgabesensoren alle 1–86400 Sekunden, auch ohne Ziel. Gilt ebenfalls für ein optionales Ziel.",
               "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
               "min_value": "Kleinster erlaubter Wert. Gleichzeitig der untere Rand des Diagramms.",
               "max_value": "Größter erlaubter Wert. Gleichzeitig der obere Rand des Diagramms.",
-              "step": "Vor dem Schreiben wird auf diese Schrittweite gerundet, z. B. 0,5.",
-              "unit": "Wird in der Karte angezeigt, z. B. °C."
+              "step": "Rundet den Sensor-Ausgabewert und den optionalen Zielwert auf diese Schrittweite, z. B. 0.5.",
+              "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen."
             }
           },
           "graph": {
@@ -161,11 +161,11 @@
           "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
           "min_value": "Kleinster erlaubter Wert. Gleichzeitig der untere Rand des Diagramms.",
           "max_value": "Größter erlaubter Wert. Gleichzeitig der obere Rand des Diagramms.",
-          "step": "Vor dem Schreiben wird auf diese Schrittweite gerundet, z. B. 0,5.",
-          "unit": "Wird in der Karte angezeigt, z. B. °C.",
+          "step": "Rundet den Sensor-Ausgabewert und den optionalen Zielwert auf diese Schrittweite, z. B. 0.5.",
+          "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen.",
           "holiday_source": "Optional: ein Arbeitstag-Binärsensor (Workday) oder ein Kalender (jedes Ereignis = freier Tag).",
-          "write_threshold": "Nur schreiben, wenn sich der Wert um mindestens diesen Betrag geändert hat (0 = bei jeder Änderung).",
-          "output_tick_seconds": "Eingang lesen und Ausgang alle 1–86400 Sekunden aktualisieren; ein Ziel ist optional.",
+          "write_threshold": "Nur für das optionale Ziel: Schreiben ab dieser Wertänderung (0 = bei jeder Änderung). Beeinflusst die Ausgabesensoren nicht.",
+          "output_tick_seconds": "Berechnet und aktualisiert die Ausgabesensoren alle 1–86400 Sekunden, auch ohne Ziel. Gilt ebenfalls für ein optionales Ziel.",
           "x_wrap": "Obergrenze ist beim Umlauf exklusiv. Sonst werden Werte an den Grenzen begrenzt.",
           "x_step": "Schrittweite beim Verschieben von Punkten; der Eingang wird nicht gerundet.",
           "x_label_step": "0 = automatisch. Tageszeit: Minuten; sonst X-Einheiten. Unabhängig vom Einrasten der Punkte.",
@@ -188,23 +188,22 @@
             }
           },
           "target": {
-            "name": "Ziel und Überwachung",
+            "name": "Optionales Ziel",
             "data": {
               "target_entity": "Ziel",
               "watch_target": "Zieländerungen als Versatz übernehmen",
-              "output_tick_seconds": "Ausgangsintervall (Sekunden)",
               "write_threshold": "Schreib-Schwelle"
             },
             "data_description": {
               "target_entity": "Optional. Ohne Ziel ist der berechnete Ausgang als Sensor verfügbar.",
               "watch_target": "Externe Sollwertänderungen als dauerhaften Versatz übernehmen.",
-              "output_tick_seconds": "Eingang lesen und Ausgang alle 1–86400 Sekunden aktualisieren; ein Ziel ist optional.",
-              "write_threshold": "Nur schreiben, wenn sich der Wert um mindestens diesen Betrag geändert hat (0 = bei jeder Änderung)."
+              "write_threshold": "Nur für das optionale Ziel: Schreiben ab dieser Wertänderung (0 = bei jeder Änderung). Beeinflusst die Ausgabesensoren nicht."
             }
           },
           "output": {
             "name": "Ausgangsberechnung",
             "data": {
+              "output_tick_seconds": "Ausgangsintervall (Sekunden)",
               "interpolation": "Übergang zwischen Punkten",
               "min_value": "Minimum",
               "max_value": "Maximum",
@@ -212,11 +211,12 @@
               "unit": "Einheit"
             },
             "data_description": {
+              "output_tick_seconds": "Berechnet und aktualisiert die Ausgabesensoren alle 1–86400 Sekunden, auch ohne Ziel. Gilt ebenfalls für ein optionales Ziel.",
               "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
               "min_value": "Kleinster erlaubter Wert. Gleichzeitig der untere Rand des Diagramms.",
               "max_value": "Größter erlaubter Wert. Gleichzeitig der obere Rand des Diagramms.",
-              "step": "Vor dem Schreiben wird auf diese Schrittweite gerundet, z. B. 0,5.",
-              "unit": "Wird in der Karte angezeigt, z. B. °C."
+              "step": "Rundet den Sensor-Ausgabewert und den optionalen Zielwert auf diese Schrittweite, z. B. 0.5.",
+              "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen."
             }
           },
           "graph": {

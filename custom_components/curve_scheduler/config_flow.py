@@ -101,11 +101,11 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
         ] = _target_selector()
     fields.update(
         {
-            vol.Required(
+            vol.Optional(
                 CONF_TICK,
                 default=values.get(CONF_TICK, values.get(CONF_INTERVAL, DEFAULT_INTERVAL) * 60),
             ): _number(1, 86400),
-            vol.Required(
+            vol.Optional(
                 CONF_INTERPOLATION,
                 default=values.get(CONF_INTERPOLATION, DEFAULT_INTERPOLATION),
             ): selector.SelectSelector(
@@ -115,54 +115,77 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
                     mode=selector.SelectSelectorMode.LIST,
                 )
             ),
-            vol.Required("x_label_step", default=values.get("x_label_step", 0)): _number(0, 1e12),
-            vol.Required("y_label_step", default=values.get("y_label_step", 0)): _number(0, 1e12),
-            vol.Required(CONF_MIN, default=values[CONF_MIN]): _number(-10000, 10000),
-            vol.Required(CONF_MAX, default=values[CONF_MAX]): _number(-10000, 10000),
-            vol.Required(CONF_STEP, default=values.get(CONF_STEP, DEFAULT_STEP)): _number(
+            vol.Optional("x_label_step", default=values.get("x_label_step", 0)): _number(0, 1e12),
+            vol.Optional("y_label_step", default=values.get("y_label_step", 0)): _number(0, 1e12),
+            vol.Optional(CONF_MIN, default=values.get(CONF_MIN, DEFAULT_MIN)): _number(
+                -10000, 10000
+            ),
+            vol.Optional(CONF_MAX, default=values.get(CONF_MAX, DEFAULT_MAX)): _number(
+                -10000, 10000
+            ),
+            vol.Optional(CONF_STEP, default=values.get(CONF_STEP, DEFAULT_STEP)): _number(
                 0.001, 1000
             ),
             vol.Optional(
                 CONF_UNIT, description={"suggested_value": values.get(CONF_UNIT, "")}
-            ): selector.TextSelector(),
+            ): selector.UnitOfMeasurementSelector(),
             vol.Optional("watch_target", default=values.get("watch_target", False)): bool,
-            vol.Required(
+            vol.Optional(
                 CONF_THRESHOLD, default=values.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
             ): _number(0, 1000),
         }
     )
     axis = axis_config(values)
-    if axis["source"] != "time_of_day":
+    if axis["source"] == "sensor":
         fields.update(
             {
-                vol.Required(CONF_X_MIN, default=axis["min"]): _number(-1e12, 1e12),
-                vol.Required(CONF_X_MAX, default=axis["max"]): _number(-1e12, 1e12),
-                vol.Required(CONF_X_STEP, default=axis["step"]): _number(1e-6, 1e12),
-                vol.Required(CONF_X_WRAP, default=axis["wrap"]): selector.BooleanSelector(),
+                vol.Optional(CONF_X_MIN, default=axis["min"]): _number(-1e12, 1e12),
+                vol.Optional(CONF_X_MAX, default=axis["max"]): _number(-1e12, 1e12),
+                vol.Optional(CONF_X_STEP, default=axis["step"]): _number(1e-6, 1e12),
+                vol.Optional(CONF_X_WRAP, default=axis["wrap"]): selector.BooleanSelector(),
             }
         )
-        if axis["source"] == "sensor":
-            fields[
-                vol.Required(CONF_INPUT, description={"suggested_value": values.get(CONF_INPUT)})
-            ] = selector.EntitySelector(
-                selector.EntitySelectorConfig(domain=["sensor", "input_number", "number"])
-            )
+        fields[
+            vol.Required(CONF_INPUT, description={"suggested_value": values.get(CONF_INPUT)})
+        ] = selector.EntitySelector(
+            selector.EntitySelectorConfig(domain=["sensor", "input_number", "number"])
+        )
     groups = {
         "input": [CONF_INPUT, CONF_X_MIN, CONF_X_MAX, CONF_X_STEP, CONF_X_WRAP],
-        "target": [CONF_TARGET, "watch_target", CONF_TICK, CONF_THRESHOLD],
-        "output": [CONF_INTERPOLATION, CONF_MIN, CONF_MAX, CONF_STEP, CONF_UNIT],
+        "output": [
+            CONF_TICK,
+            CONF_INTERPOLATION,
+            CONF_MIN,
+            CONF_MAX,
+            CONF_STEP,
+            CONF_UNIT,
+        ],
+        "target": [CONF_TARGET, "watch_target", CONF_THRESHOLD],
         "graph": ["x_label_step", "y_label_step"],
     }
-    return vol.Schema(
-        {
-            vol.Optional(group, default=dict): section(
-                vol.Schema({key: fields[key] for name in names for key in fields if key == name}),
-                {"collapsed": False},
-            )
-            for group, names in groups.items()
-            if any(key in names for key in fields)
+    if not include_target and not values.get(CONF_TARGET):
+        groups.pop("target")
+    sections: dict[Any, Any] = {}
+    for group, names in groups.items():
+        group_fields = {key: fields[key] for name in names for key in fields if key == name}
+        if not group_fields:
+            continue
+        # HA initializes section data from the outer default, not its nested fields.
+        defaults = {
+            str(key): key.default() for key in group_fields if key.default is not vol.UNDEFINED
         }
-    )
+        defaults.update(
+            {
+                str(key): values[str(key)]
+                for key in group_fields
+                if str(key) in values and values[str(key)] not in (None, "")
+            }
+        )
+        sections[vol.Optional(group, default=defaults)] = section(
+            vol.Schema(group_fields),
+            {"collapsed": group == "target" and not values.get(CONF_TARGET)},
+        )
+    return vol.Schema(sections)
 
 
 def flatten_settings(user_input: dict[str, Any]) -> dict[str, Any]:
@@ -185,7 +208,7 @@ def validate_settings(user_input: dict[str, Any]) -> dict[str, str]:
         errors[CONF_MAX] = "max_not_greater"
     if float(user_input[CONF_STEP]) <= 0:
         errors[CONF_STEP] = "step_positive"
-    if float(user_input[CONF_THRESHOLD]) < 0:
+    if float(user_input.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)) < 0:
         errors[CONF_THRESHOLD] = "threshold_negative"
     tick = user_input.get(CONF_TICK, user_input.get(CONF_INTERVAL, DEFAULT_INTERVAL) * 60)
     if not isinstance(tick, (int, float)) or not math.isfinite(tick) or not 1 <= tick <= 86400:
@@ -222,20 +245,23 @@ def validate_settings(user_input: dict[str, Any]) -> dict[str, str]:
         if not math.isfinite(value) or value < 0 or (value > 0 and span / value > 100):
             errors[key] = "invalid_label_step"
     for key in (CONF_MIN, CONF_MAX, CONF_STEP, CONF_THRESHOLD):
-        if not math.isfinite(float(user_input[key])):
+        if not math.isfinite(float(user_input.get(key, DEFAULT_THRESHOLD))):
             errors[key] = "invalid_number"
     return errors
 
 
 def clean_settings(user_input: dict[str, Any]) -> dict[str, Any]:
     """Normalize numeric types and optional fields."""
-    result = dict(user_input)
+    result = {CONF_THRESHOLD: DEFAULT_THRESHOLD, **user_input}
     if CONF_INTERVAL in result:
         result[CONF_INTERVAL] = int(result[CONF_INTERVAL])
     if CONF_TICK in result:
         result[CONF_TICK] = float(result[CONF_TICK])
     for key in (CONF_MIN, CONF_MAX, CONF_STEP, CONF_THRESHOLD):
         result[key] = float(result[key])
+    if result.get(CONF_AXIS, "time_of_day") != "sensor":
+        for key in (CONF_INPUT, CONF_X_MIN, CONF_X_MAX, CONF_X_STEP, CONF_X_WRAP):
+            result.pop(key, None)
     result[CONF_UNIT] = (result.get(CONF_UNIT) or "").strip()
     result[CONF_HOLIDAY_SOURCE] = result.get(CONF_HOLIDAY_SOURCE) or None
     return result
@@ -320,9 +346,13 @@ class CurveSchedulerConfigFlow(ConfigFlow, domain=DOMAIN):
                     data={CONF_NAME: self._name, CONF_TARGET: self._target},
                     options=clean_settings(user_input),
                 )
-            values = {**user_input}
+            values = {**user_input, CONF_TARGET: self._target}
         else:
-            values = {**target_defaults(self.hass, self._target), CONF_AXIS: self._axis}
+            values = {
+                **target_defaults(self.hass, self._target),
+                CONF_AXIS: self._axis,
+                CONF_TARGET: self._target,
+            }
         return self.async_show_form(
             step_id="settings",
             data_schema=settings_schema(values, include_target=False),
