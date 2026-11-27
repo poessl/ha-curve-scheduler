@@ -164,3 +164,76 @@ it("labels the built-in weekly axis with weekdays", async () => {
   expect(labels[0].getAttribute("style")).toBe("text-anchor:start");
   expect(labels[7].getAttribute("style")).toBe("text-anchor:end");
 });
+
+it.each(["month_of_year", "day_of_week", "sensor"] as const)("previews the next cycle without editable points for %s", async source => {
+  const { editor } = await mount();
+  const min = source === "sensor" ? -20 : 1;
+  const max = source === "month_of_year" ? 13 : source === "day_of_week" ? 8 : 40;
+  const width = max - min;
+  const points = [{ x: min, v: 30 }, { x: min + width / 24, v: 60 }, { x: min + width / 2, v: 40 }];
+  editor.data = { ...editor.data, config: { ...editor.data.config, axis: { source, input_entity: null, min, max, step: 0.01, wrap: true } }, schedule: { ...editor.data.schedule, curve: points } };
+  await editor.updateComplete;
+  const chart = graph(editor);
+  for (const mode of ["step", "linear", "smooth", "curve"] as const) {
+    editor.data = { ...editor.data, config: { ...editor.data.config, interpolation: mode } };
+    await editor.updateComplete;
+    await chart.updateComplete;
+    const shade = chart.shadowRoot!.querySelector("rect.next-day")!;
+    expect(Number(shade.getAttribute("x"))).toBeCloseTo(chart.xFor(max));
+    expect(Number(shade.getAttribute("width"))).toBeGreaterThan(0);
+    const solid = chart.shadowRoot!.querySelector("path.curve")!.getAttribute("d")!;
+    const dashed = chart.shadowRoot!.querySelector("path.continuation")!.getAttribute("d")!;
+    expect(dashed.startsWith(`M${solid.split("L").at(-1)}`)).toBe(true);
+    const nextPoint = max + width / 24;
+    expect(dashed).toContain(`L${chart.xFor(nextPoint).toFixed(1)},${chart.yFor(60).toFixed(1)}`);
+    expect(chart.curveValue(nextPoint)).toBeCloseTo(chart.curveValue(min + width / 24)!);
+    expect(chart.shadowRoot!.querySelectorAll(".handle")).toHaveLength(points.length);
+    chart.addPointAt(chart.xFor(nextPoint));
+    await editor.updateComplete;
+    expect(editor.points).toEqual(points);
+  }
+  editor.editable = false;
+  await editor.updateComplete;
+  await chart.updateComplete;
+  expect(chart.shadowRoot!.querySelector("path.continuation")).not.toBeNull();
+  expect(chart.shadowRoot!.querySelectorAll(".handle")).toHaveLength(0);
+  chart.showContinuation = false;
+  await chart.updateComplete;
+  expect(chart.shadowRoot!.querySelector(".next-day, .continuation")).toBeNull();
+});
+
+it("does not show a next cycle for clamped sensors", async () => {
+  const { editor } = await mount();
+  const chart = graph(editor);
+  expect(chart.shadowRoot!.querySelector(".next-day, .continuation")).toBeNull();
+  expect(chart.curveValue(100)).toBe(20);
+  expect(chart.xFor(40)).toBe(310);
+});
+
+it.each(["month_of_year", "day_of_week", "sensor"] as const)("formats the live %s input using display precision without moving the graph cursor", async source => {
+  const { editor } = await mount();
+  const raw = 7.123456789;
+  editor.data = { ...editor.data, config: { ...editor.data.config, axis: { ...editor.data.config.axis!, source } }, state: { ...editor.data.state, input_value: raw } };
+  for (const language of ["en", "de"]) {
+    editor.language = language;
+    for (const precision of [undefined, 0, 6]) {
+      editor.data = { ...editor.data, config: { ...editor.data.config, input_decimals: precision } };
+      await editor.updateComplete;
+      const chart = graph(editor);
+      await chart.updateComplete;
+      const expected = precision === 0 ? "7" : precision === 6 ? "7.123457" : "7.12";
+      const localized = language === "de" ? expected.replace(".", ",") : expected;
+      const readout = editor.shadowRoot!.querySelector("p")!.textContent!;
+      expect(readout).toContain(`: ${localized} →`);
+      expect(readout).not.toContain("123456789");
+      expect(chart.nowMinute).toBe(raw);
+      expect(Number(chart.shadowRoot!.querySelector(".now")!.getAttribute("x1"))).toBeCloseTo(chart.xFor(raw));
+      expect(editor.data.state.input_value).toBe(raw);
+    }
+  }
+  for (const input of [0, null, undefined]) {
+    editor.data = { ...editor.data, state: { ...editor.data.state, input_value: input } };
+    await editor.updateComplete;
+    expect(editor.shadowRoot!.querySelector("p")!.textContent).toContain(`: ${input === 0 ? "0" : "—"} →`);
+  }
+});

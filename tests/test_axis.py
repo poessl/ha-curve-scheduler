@@ -22,7 +22,7 @@ from custom_components.curve_scheduler.const import DOMAIN
 from custom_components.curve_scheduler.model import ScheduleValidationError
 
 from .conftest import make_entry, setup_entry
-from .test_config_flow import SETTINGS, group_settings, schema_fields
+from .test_config_flow import SETTINGS, form_defaults, group_settings, schema_fields
 
 SENSOR_OPTIONS = {
     "axis_source": "sensor",
@@ -412,3 +412,51 @@ async def test_calendar_axes_are_fixed(hass: HomeAssistant, source: str) -> None
     assert entry.runtime_data.axis == expected
     await hass.config_entries.async_reload(entry.entry_id)
     assert entry.runtime_data.axis == expected
+
+
+@pytest.mark.parametrize("source", ["time_of_day", "day_of_week", "month_of_year", "sensor"])
+async def test_input_display_precision_setup_options_and_reload(
+    hass: HomeAssistant, source: str, freezer: FrozenDateTimeFactory
+) -> None:
+    freezer.move_to("2026-11-27T12:34:56+01:00")
+    await hass.config.async_set_time_zone("Europe/Berlin")
+    hass.states.async_set("sensor.precise_input", "7.123456789")
+    flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    flow = await hass.config_entries.flow.async_configure(
+        flow["flow_id"], {"name": "Precise input", "axis_source": source}
+    )
+    defaults = form_defaults(flow)
+    assert defaults["input"]["input_decimals"] == 2
+    defaults["input"]["input_decimals"] = 0
+    if source == "sensor":
+        defaults["input"]["input_entity"] = "sensor.precise_input"
+    result = await hass.config_entries.flow.async_configure(flow["flow_id"], defaults)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    entry = result["result"]
+    before = entry.runtime_data.compute_at(dt_util.now())
+    assert before.input_x != round(before.input_x)
+    for precision in (6, 0):
+        flow = await hass.config_entries.options.async_init(entry.entry_id)
+        flow = await hass.config_entries.options.async_configure(
+            flow["flow_id"], {"axis_source": source}
+        )
+        defaults = form_defaults(flow)
+        assert defaults["input"]["input_decimals"] == entry.options["input_decimals"]
+        defaults["input"]["input_decimals"] = precision
+        result = await hass.config_entries.options.async_configure(flow["flow_id"], defaults)
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        await hass.async_block_till_done()
+        await hass.config_entries.async_reload(entry.entry_id)
+        assert entry.options["input_decimals"] == precision
+        assert entry.runtime_data.config_dict()["input_decimals"] == precision
+        assert entry.runtime_data.compute_at(dt_util.now()) == before
+
+
+@pytest.mark.parametrize("value", [-1, 7, 1.5, float("nan"), float("inf"), "2", None, True])
+def test_invalid_input_display_precision(value: Any) -> None:
+    from custom_components.curve_scheduler.config_flow import validate_settings
+
+    assert validate_settings({**SETTINGS, "input_decimals": value}) == {
+        "input_decimals": "invalid_input_decimals"
+    }

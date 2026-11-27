@@ -221,6 +221,7 @@ class CurveSchedulerRuntime:
             "interval": self.interval,
             "output_tick_seconds": self.tick_seconds,
             "axis": self.axis,
+            "input_decimals": int(self.options.get("input_decimals", 2)),
             "x_label_step": float(self.options.get("x_label_step", 0)),
             "y_label_step": float(self.options.get("y_label_step", 0)),
             "interpolation": self.mode,

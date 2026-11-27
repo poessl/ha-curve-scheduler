@@ -283,6 +283,7 @@ axes) must be chosen.
 | Output tick | seconds between input sampling and output updates (1–86400) | 300 |
 | X-axis source | time of day / day of week / month of year / sensor | time of day |
 | Input entity | numeric state from `sensor`, `input_number` or `number`; required for a sensor axis | – |
+| Input display decimals | 0–6 decimal places for the numeric input readout; calculation keeps full precision and clock times keep their time format | 2 |
 | X minimum / maximum | sensor axis limits (upper limit exclusive when wrapping); calendar limits are fixed | sensor: 0 / 100 |
 | X point resolution | sensor axis snapping for point movement; input samples are not rounded | 0.1 |
 | Wrap input | sensor axis only: periodic continuation; otherwise clamp out-of-range input | off |
@@ -311,6 +312,9 @@ resolution, and wrapping are defined automatically and cannot be changed. X poin
 resolution snaps edits, not the running input: the default 0.01 on a week axis is 14.4
 minutes. With wrapping, the upper limit is excluded; use 1 rather than 8 for the
 Monday boundary. Without wrapping, the curve holds its endpoint values.
+Wrapping month, weekday, and sensor graphs show the beginning of the next cycle
+in a shaded strip with a dashed curve. The preview cannot be edited; edit the
+points in the current cycle instead.
 
 <p>
   <img src="docs/images/sensor-offset-en.webp" width="420" alt="Outdoor-temperature heating curve with a negative offset">

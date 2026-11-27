@@ -136,6 +136,13 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
         }
     )
     axis = axis_config(values)
+    fields[vol.Optional("input_decimals", default=values.get("input_decimals", 2))] = (
+        selector.NumberSelector(
+            selector.NumberSelectorConfig(
+                min=0, max=6, step=1, mode=selector.NumberSelectorMode.BOX
+            )
+        )
+    )
     if axis["source"] == "sensor":
         fields.update(
             {
@@ -151,7 +158,7 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
             selector.EntitySelectorConfig(domain=["sensor", "input_number", "number"])
         )
     groups = {
-        "input": [CONF_INPUT, CONF_X_MIN, CONF_X_MAX, CONF_X_STEP, CONF_X_WRAP],
+        "input": [CONF_INPUT, CONF_X_MIN, CONF_X_MAX, CONF_X_STEP, CONF_X_WRAP, "input_decimals"],
         "output": [
             CONF_TICK,
             CONF_INTERPOLATION,
@@ -217,6 +224,15 @@ def validate_settings(user_input: dict[str, Any]) -> dict[str, str]:
     if source not in AXIS_SOURCES:
         errors[CONF_AXIS] = "invalid_axis"
         return errors
+    decimals = user_input.get("input_decimals", 2)
+    if (
+        isinstance(decimals, bool)
+        or not isinstance(decimals, (int, float))
+        or not math.isfinite(decimals)
+        or not 0 <= decimals <= 6
+        or decimals != int(decimals)
+    ):
+        errors["input_decimals"] = "invalid_input_decimals"
     try:
         axis = axis_config(user_input)
         if (
@@ -253,6 +269,7 @@ def validate_settings(user_input: dict[str, Any]) -> dict[str, str]:
 def clean_settings(user_input: dict[str, Any]) -> dict[str, Any]:
     """Normalize numeric types and optional fields."""
     result = {CONF_THRESHOLD: DEFAULT_THRESHOLD, **user_input}
+    result["input_decimals"] = int(result.get("input_decimals", 2))
     if CONF_INTERVAL in result:
         result[CONF_INTERVAL] = int(result[CONF_INTERVAL])
     if CONF_TICK in result:

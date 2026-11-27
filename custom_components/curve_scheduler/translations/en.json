@@ -32,7 +32,8 @@
           "x_wrap": "Wrap input",
           "x_label_step": "X-axis label interval",
           "y_label_step": "Y-axis label interval",
-          "watch_target": "Watch target changes as offset"
+          "watch_target": "Watch target changes as offset",
+          "input_decimals": "Input display decimals"
         },
         "data_description": {
           "interpolation": "How the value changes between two points.",
@@ -47,7 +48,8 @@
           "x_step": "Point movement resolution; the sampled input is not rounded.",
           "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
           "y_label_step": "0 = automatic; otherwise the spacing in output units.",
-          "watch_target": "Keep external target adjustments as a persistent additive offset."
+          "watch_target": "Keep external target adjustments as a persistent additive offset.",
+          "input_decimals": "0–6 decimal places for displayed numeric input values. Curve evaluation keeps full precision; clock times keep their time format."
         },
         "sections": {
           "input": {
@@ -57,11 +59,13 @@
               "x_min": "X minimum",
               "x_max": "X maximum",
               "x_step": "X point resolution",
-              "x_wrap": "Wrap input"
+              "x_wrap": "Wrap input",
+              "input_decimals": "Input display decimals"
             },
             "data_description": {
               "x_step": "Point movement resolution; the sampled input is not rounded.",
-              "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits."
+              "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
+              "input_decimals": "0–6 decimal places for displayed numeric input values. Curve evaluation keeps full precision; clock times keep their time format."
             }
           },
           "target": {
@@ -119,7 +123,8 @@
       "invalid_number": "Enter a finite number.",
       "curve_out_of_range": "Saved points are outside these limits. Edit the curve before reducing the limits.",
       "invalid_label_step": "Use 0 for automatic labels or a positive spacing producing at most 100 intervals.",
-      "input_is_target": "Input and target must differ to avoid an output feeding back into its own input."
+      "input_is_target": "Input and target must differ to avoid an output feeding back into its own input.",
+      "invalid_input_decimals": "Enter a whole number from 0 to 6."
     },
     "abort": {
       "already_configured": "This target already has a time profile.",
@@ -154,7 +159,8 @@
           "x_wrap": "Wrap input",
           "x_label_step": "X-axis label interval",
           "y_label_step": "Y-axis label interval",
-          "watch_target": "Watch target changes as offset"
+          "watch_target": "Watch target changes as offset",
+          "input_decimals": "Input display decimals"
         },
         "data_description": {
           "target_entity": "Optional. Without a target the calculated output is available as a sensor.",
@@ -170,7 +176,8 @@
           "x_step": "Point movement resolution; the sampled input is not rounded.",
           "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
           "y_label_step": "0 = automatic; otherwise the spacing in output units.",
-          "watch_target": "Keep external target adjustments as a persistent additive offset."
+          "watch_target": "Keep external target adjustments as a persistent additive offset.",
+          "input_decimals": "0–6 decimal places for displayed numeric input values. Curve evaluation keeps full precision; clock times keep their time format."
         },
         "sections": {
           "input": {
@@ -180,11 +187,13 @@
               "x_min": "X minimum",
               "x_max": "X maximum",
               "x_step": "X point resolution",
-              "x_wrap": "Wrap input"
+              "x_wrap": "Wrap input",
+              "input_decimals": "Input display decimals"
             },
             "data_description": {
               "x_step": "Point movement resolution; the sampled input is not rounded.",
-              "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits."
+              "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
+              "input_decimals": "0–6 decimal places for displayed numeric input values. Curve evaluation keeps full precision; clock times keep their time format."
             }
           },
           "target": {
@@ -244,7 +253,8 @@
       "invalid_number": "Enter a finite number.",
       "curve_out_of_range": "Saved points are outside these limits. Edit the curve before reducing the limits.",
       "invalid_label_step": "Use 0 for automatic labels or a positive spacing producing at most 100 intervals.",
-      "input_is_target": "Input and target must differ to avoid an output feeding back into its own input."
+      "input_is_target": "Input and target must differ to avoid an output feeding back into its own input.",
+      "invalid_input_decimals": "Enter a whole number from 0 to 6."
     }
   },
   "selector": {

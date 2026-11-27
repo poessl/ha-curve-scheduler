@@ -161,6 +161,10 @@ export class CurveSchedulerCurve extends LitElement {
 
   private get domainStart(): number { return this.axis?.min ?? 0; }
 
+  private get cycleEnd(): number { return this.axis?.max ?? MINUTES_PER_DAY; }
+
+  private get hasContinuation(): boolean { return this.showContinuation && (!this.axis || this.axis.wrap); }
+
   private get sourcePoints(): ChartPoint[] { return this.axis ? this.numericPoints : this.points; }
 
   private xOf(point: ChartPoint): number { return "x" in point ? point.x : parseTime(point.t); }
@@ -180,8 +184,8 @@ export class CurveSchedulerCurve extends LitElement {
   }
 
   private get domainEnd(): number {
-    if (this.axis) return this.axis.max;
-    return this.showContinuation ? MINUTES_PER_DAY + CONTINUATION : MINUTES_PER_DAY;
+    const continuation = (this.cycleEnd - this.domainStart) * CONTINUATION / MINUTES_PER_DAY;
+    return this.cycleEnd + (this.hasContinuation ? continuation : 0);
   }
 
   private get plotWidth(): number {
@@ -463,7 +467,7 @@ export class CurveSchedulerCurve extends LitElement {
     const parts: string[] = [];
     let previous: number | null = null;
     const inputs = Array.from({ length: samples + 1 }, (_, i) => from + i * stepMinutes);
-    if (this.axis) inputs.push(...points.flatMap(p => [this.xOf(p) - (to - from) * 1e-9, this.xOf(p)]).filter(x => x >= from && x <= to));
+    if (this.axis) inputs.push(...timeline.flatMap(([x]) => [x - (to - from) * 1e-9, x]).filter(x => x >= from && x <= to));
     for (const [i, minute] of [...new Set(inputs)].sort((a, b) => a - b).entries()) {
       const raw = clamp(interpolator.at(minute), this.min, this.max);
       const value = adjusted ? clamp(roundToStep(clamp(roundToStep(raw, this.step) + this.offset, this.min, this.max), this.step), this.min, this.max) : raw;
@@ -499,14 +503,14 @@ export class CurveSchedulerCurve extends LitElement {
         (minute) => svg`
           <line class="grid" x1=${this.xFor(minute)} x2=${this.xFor(minute)}
             y1=${PAD_TOP} y2=${bottom}></line>
-          <text class="label x" style=${minute === this.domainStart ? "text-anchor:start" : minute === this.domainEnd ? "text-anchor:end" : ""} x=${this.xFor(minute)} y=${bottom + 17}>${this.axis ? this.formatX(minute) : this.xLabelStep > 0 ? formatTime(minute) : minute / 60}</text>`,
+          <text class="label x" style=${minute === this.domainStart ? "text-anchor:start" : minute === this.cycleEnd ? "text-anchor:end" : ""} x=${this.xFor(minute)} y=${bottom + 17}>${this.axis ? this.formatX(minute) : this.xLabelStep > 0 ? formatTime(minute) : minute / 60}</text>`,
       )}
       ${
-        !this.axis && this.showContinuation
-          ? svg`<rect class="next-day" x=${this.xFor(MINUTES_PER_DAY)} y=${PAD_TOP}
-              width=${this.xFor(this.domainEnd) - this.xFor(MINUTES_PER_DAY)}
+        this.hasContinuation
+          ? svg`<rect class="next-day" x=${this.xFor(this.cycleEnd)} y=${PAD_TOP}
+              width=${this.xFor(this.domainEnd) - this.xFor(this.cycleEnd)}
               height=${this.plotHeight}></rect>
-              <text class="label x" x=${this.xFor(MINUTES_PER_DAY + CONTINUATION / 2)}
+              <text class="label" x=${this.xFor((this.cycleEnd + this.domainEnd) / 2)}
                 y=${PAD_TOP + 12}>+1</text>`
           : nothing
       }
@@ -585,9 +589,9 @@ export class CurveSchedulerCurve extends LitElement {
 
   protected render() {
     const points = this.shownPoints;
-    const solid = this.curvePath(points, this.domainStart, this.axis?.max ?? MINUTES_PER_DAY);
-    const dashed = !this.axis && this.showContinuation
-      ? this.curvePath(points, MINUTES_PER_DAY, this.domainEnd)
+    const solid = this.curvePath(points, this.domainStart, this.cycleEnd);
+    const dashed = this.hasContinuation
+      ? this.curvePath(points, this.cycleEnd, this.domainEnd)
       : "";
     return html`
       <div

@@ -139,7 +139,7 @@ def group_settings(values, *, include_target=True):
     if "min_value" not in values:
         return values
     groups = {
-        "input": ["input_entity", "x_min", "x_max", "x_step", "x_wrap"],
+        "input": ["input_entity", "x_min", "x_max", "x_step", "x_wrap", "input_decimals"],
         "output": [
             "output_tick_seconds",
             "interpolation",
@@ -206,7 +206,8 @@ async def test_sensor_only_setup_needs_no_manual_settings(hass: HomeAssistant) -
     flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
     flow = await hass.config_entries.flow.async_configure(flow["flow_id"], {"name": "Example"})
     defaults = form_defaults(flow)
-    assert set(defaults) == {"output", "graph"}
+    assert set(defaults) == {"input", "output", "graph"}
+    assert defaults["input"] == {"input_decimals": 2}
     assert defaults["output"][CONF_TICK] == 300
     assert defaults["output"][CONF_STEP] == 0.5
     assert defaults["graph"] == {"x_label_step": 0, "y_label_step": 0}
@@ -237,6 +238,7 @@ async def test_reopen_settings_preserves_every_value(hass: HomeAssistant, target
         "write_threshold": 1.25,
         "x_label_step": 10,
         "y_label_step": 5,
+        "input_decimals": 2,
     }
     entry = await setup_entry(hass, make_entry(target, **saved))
     before = entry.runtime_data.schedule_dict()

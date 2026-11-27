@@ -64,6 +64,7 @@ export interface Schedule {
 }
 
 export interface InstanceConfig {
+  input_decimals?: number;
   watch_target?: boolean;
   x_label_step?: number;
   y_label_step?: number;

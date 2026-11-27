@@ -2,6 +2,7 @@
 import { LitElement, html, css, nothing, type PropertyValues } from "lit";
 import { saveSchedule, type HomeAssistant } from "./api";
 import { roundToStep } from "./interpolation";
+import { formatNumber } from "./format";
 import { clone, type InstanceData, type NumericPoint } from "./model";
 import "./curve";
 import { sharedStyles } from "./styles";
@@ -107,7 +108,7 @@ export class NumericEditor extends LitElement {
     const { config, state } = this.data;
     const axis = config.axis!;
     return html`
-      ${this.graphOnly ? nothing : html`<p>${this.text.x}: ${state.input_value ?? "—"} → ${this.text.y}: ${state.value ?? "—"} ${config.unit ?? ""}</p>
+      ${this.graphOnly ? nothing : html`<p>${this.text.x}: ${state.input_value == null ? "—" : formatNumber(state.input_value, 10 ** -(config.input_decimals ?? 2), this.language)} → ${this.text.y}: ${state.value ?? "—"} ${config.unit ?? ""}</p>
       <p class="muted">${axis.source === "sensor" ? axis.input_entity : axis.source === "day_of_week" ? (this.language.startsWith("de") ? "Wochentag (1 = Mo, 7 = So; Bruchteile = Tageszeit)" : "Day of week (1 = Mon, 7 = Sun; fractions = time of day)") : axis.source} · ${axis.min}…${axis.max} · ${axis.wrap ? this.text.wrap : this.text.clamp}</p>`}
       ${state.input_available === false ? html`<p role="status">${this.text.unavailable}</p>` : nothing}
       <curve-scheduler-curve
@@ -119,7 +120,7 @@ export class NumericEditor extends LitElement {
         .color=${"var(--plan-color, var(--primary-color))"}
         .editable=${this.editable && this.editing && !this.saving} .selected=${this.selected}
         .nowMinute=${state.input_value ?? null} .nowValue=${state.value}
-        .showContinuation=${false}
+        .showContinuation=${axis.wrap}
         @point-selected=${(e: CustomEvent) => { this.selected = e.detail.index; }}
         @numeric-points-changed=${(e: CustomEvent) => { e.stopPropagation(); this.points = e.detail.points; this.selected = e.detail.selected; }}
       ></curve-scheduler-curve>
