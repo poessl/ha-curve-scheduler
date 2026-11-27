@@ -138,6 +138,10 @@ output and the next planned point, whose value excludes the offset.
   to the next day.
 - **Apply offset** chooses whether this plan uses the stored adjustment.
   The editing graph always shows the original points.
+- **Apply target values** is on by default. Turn it off to leave the target
+  unchanged while this plan is active, including after graph edits or **Apply now**.
+  Graphs and sensors keep updating. Target writes and offset capture resume when
+  a plan with this option enabled becomes active; the curve must also be enabled.
 - **Copy curve from** copies all points from another plan.
 - With a point selected, use the arrow keys to adjust it, **Delete/Backspace** to remove it, or **Escape** to deselect it. **Space** adds a point when you are not typing in a field.
 

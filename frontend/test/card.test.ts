@@ -58,6 +58,20 @@ describe("curve-scheduler-card", () => {
     expect(card.shadowRoot!.querySelector("curve-scheduler-editor")).toBeNull();
   });
 
+  it("explains when the active plan leaves the target unchanged", async () => {
+    const data = instance();
+    data.schedule.profiles[data.state.profile_id].apply_target = false;
+    const { hass } = fakeHass(data);
+    const card = document.createElement("curve-scheduler-card") as CurveSchedulerCard;
+    card.setConfig({ type: "custom:curve-scheduler-card", entry_id: "abc" });
+    card.hass = hass;
+    document.body.append(card);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await card.updateComplete;
+    expect(card.shadowRoot!.querySelector(".notice")!.textContent).toContain("Dieser Plan lässt das Gerät unverändert.");
+    expect(card.shadowRoot!.querySelector("curve-scheduler-curve")).not.toBeNull();
+  });
+
   it("opens the editor", async () => {
     const { card } = await mount({});
     card.shadowRoot!.querySelector<HTMLButtonElement>("button.edit")!.click();

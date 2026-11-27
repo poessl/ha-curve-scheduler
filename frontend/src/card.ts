@@ -354,7 +354,8 @@ export class CurveSchedulerCard extends LitElement {
       ${graph}
       ${curveInvalid ? html`<div class="notice error" role="alert">${this.language.startsWith("de") ? "Kurve nicht verfügbar: Ankerpunkte überschneiden sich. Ankerquellen oder Partnerzuordnung korrigieren." : "Curve unavailable: anchor points collide. Correct the source values or partner assignments."} ${state.curve_errors?.map(e => `${schedule.profiles[String(e.params.profile)]?.name ?? ""}: ${this.language.startsWith("de") ? "Punkte" : "points"} ${Number(e.params.point) + 1} / ${Number(e.params.following) + 1}`).join("; ")}</div>` : nothing}
       ${state.enabled ? nothing : html`<div class="notice warning">${this.t("today.disabled")}</div>`}
-      ${state.enabled && config.target && !state.target_available
+      ${state.enabled && profile?.apply_target === false ? html`<div class="notice warning">${this.t("today.target_paused")}</div>` : nothing}
+      ${state.enabled && profile?.apply_target !== false && config.target && !state.target_available
         ? html`<div class="notice warning">${this.t("today.unavailable")}</div>`
         : nothing}
       ${(this._config.show_controls ?? this._config.view !== "graph") ? html`<div class="actions">

@@ -210,6 +210,13 @@ class CurveSchedulerRuntime:
         return bool(self.data.get("enabled", True))
 
     @property
+    def target_enabled(self) -> bool:
+        """Return whether the curve and active plan allow target updates."""
+        now = dt_util.now()
+        profile_id = self.day_profile(now.date(), now).profile_id
+        return self.enabled and bool(self.data["profiles"][profile_id].get("apply_target", True))
+
+    @property
     def revision(self) -> int:
         """Return the revision of the editable data."""
         return int(self.data.get("revision", 1))
@@ -454,7 +461,7 @@ class CurveSchedulerRuntime:
             and new is not None
             and was_available
             and is_available
-            and self.enabled
+            and self.target_enabled
             and self.options.get("watch_target", False)
             and new.context.id not in self._write_contexts
             and new.context.parent_id not in self._write_contexts
@@ -910,7 +917,7 @@ class CurveSchedulerRuntime:
         await self.async_update(force=True)
 
     async def _async_write(self, value: float, force: bool) -> None:
-        if not self.enabled or not self.target:
+        if not self.target_enabled or not self.target:
             return
         if not self.target_available():
             if not self._unavailable_warned:

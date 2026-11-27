@@ -139,6 +139,7 @@ async def test_clone_preserves_conditions_and_plan_offset_flags(hass: HomeAssist
     runtime = source.runtime_data
     schedule = runtime.schedule_dict()
     schedule["profiles"]["day_off"]["apply_offset"] = False
+    schedule["profiles"]["day_off"]["apply_target"] = False
     schedule["activations"] = [
         {
             "type": "condition",
@@ -162,6 +163,7 @@ async def test_clone_preserves_conditions_and_plan_offset_flags(hass: HomeAssist
     cloned = result["result"].runtime_data
     assert cloned.data["activations"] == schedule["activations"]
     assert cloned.data["profiles"]["day_off"]["apply_offset"] is False
+    assert cloned.data["profiles"]["day_off"]["apply_target"] is False
     assert cloned.offset == 3
     assert not cloned.enabled
     await cloned.async_clear_offset()

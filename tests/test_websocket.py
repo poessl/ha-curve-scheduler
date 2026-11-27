@@ -279,6 +279,7 @@ async def test_conditions_and_plan_offset_roundtrip(
     hass.states.async_set("sensor.mode", "home")
     schedule = runtime.schedule_dict()
     schedule["profiles"]["day_off"]["apply_offset"] = False
+    schedule["profiles"]["day_off"]["apply_target"] = False
     schedule["activations"] = [
         {
             "type": "condition",
@@ -301,6 +302,7 @@ async def test_conditions_and_plan_offset_roundtrip(
     result = (await client.receive_json())["result"]
     assert result["schedule"]["activations"] == schedule["activations"]
     assert result["schedule"]["profiles"]["day_off"]["apply_offset"] is False
+    assert result["schedule"]["profiles"]["day_off"]["apply_target"] is False
     assert result["state"]["profile_id"] == "day_off"
     assert result["state"]["offset"] == 0
     assert result["state"]["curve_value"] == result["state"]["value"]

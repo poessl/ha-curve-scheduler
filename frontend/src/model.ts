@@ -41,6 +41,7 @@ export interface Activation { type: "weekday" | "holiday" | "condition"; conditi
 
 export interface Profile {
   apply_offset?: boolean;
+  apply_target?: boolean;
   curve?: NumericPoint[];
   name: string;
   color: string;
@@ -227,7 +228,9 @@ export function validateSchedule(data: Schedule, min: number, max: number, axis?
     if (!PROFILE_ID_RE.test(id)) {
       add("invalid_profile_id", path);
     }
-    if (profile.apply_offset !== undefined && typeof profile.apply_offset !== "boolean") add("invalid_format", `${path}.apply_offset`);
+    for (const option of ["apply_offset", "apply_target"] as const) {
+      if (profile[option] !== undefined && typeof profile[option] !== "boolean") add("invalid_format", `${path}.${option}`);
+    }
     const name = typeof profile.name === "string" ? profile.name : "";
     if (!name.trim()) {
       add("empty_name", `${path}.name`);

@@ -836,6 +836,12 @@ export class CurveSchedulerEditor extends LitElement {
         </div>
       </div>
       <div class="row">
+        <label class="check"><input type="checkbox" class="apply-target"
+          .checked=${profile.apply_target !== false}
+          @change=${(e: Event) => {
+            const enabled = (e.target as HTMLInputElement).checked;
+            this.change(draft => { draft.profiles[this._profileId].apply_target = enabled; });
+          }}>${this.t("profiles.apply_target")}</label>
         <label class="check"><input type="checkbox" class="apply-offset"
           .checked=${profile.apply_offset !== false}
           @change=${(e: Event) => {

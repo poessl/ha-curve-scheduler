@@ -488,6 +488,25 @@ it("toggles offset application independently for a plan", async () => {
   expect(editor._draft.profiles.workday.apply_offset).toBe(true);
 });
 
+it("saves target application independently for a plan and supports undo", async () => {
+  const toggle = editor.shadowRoot!.querySelector<HTMLInputElement>(".apply-target")!;
+  expect(toggle.checked).toBe(true);
+  toggle.checked = false;
+  toggle.dispatchEvent(new Event("change"));
+  await settle();
+  expect(editor._draft.profiles.workday.apply_target).toBe(false);
+  expect(editor._draft.profiles.day_off.apply_target).toBeUndefined();
+  editor.undo();
+  await settle();
+  expect(toggle.checked).toBe(true);
+  toggle.checked = false;
+  toggle.dispatchEvent(new Event("change"));
+  await settle();
+  callWS.mockResolvedValue({ ok: true, revision: 4 });
+  await editor.save();
+  expect(callWS.mock.calls.find(([message]) => message.type === "curve_scheduler/save")![0].schedule.profiles.workday.apply_target).toBe(false);
+});
+
 it("clears the persisted offset through the action", async () => {
   editor.language = "en";
   editor.data = { ...editor.data, state: { ...editor.data.state, offset: 3, curve_value: 48, value: 45 } };

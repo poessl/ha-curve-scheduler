@@ -238,8 +238,9 @@ def validate_schedule(
         if not isinstance(profile, Mapping):
             _issue(issues, "invalid_format", path)
             continue
-        if "apply_offset" in profile and not isinstance(profile["apply_offset"], bool):
-            _issue(issues, "invalid_format", f"{path}.apply_offset")
+        for option in ("apply_offset", "apply_target"):
+            if option in profile and not isinstance(profile[option], bool):
+                _issue(issues, "invalid_format", f"{path}.{option}")
         name = profile.get("name")
         if not isinstance(name, str) or not name.strip():
             _issue(issues, "empty_name", f"{path}.name")
@@ -455,7 +456,11 @@ def normalize_schedule(data: Mapping[str, Any]) -> dict[str, Any]:
             profile_id: {
                 "name": profile["name"].strip(),
                 "color": profile["color"].lower(),
-                **({"apply_offset": profile["apply_offset"]} if "apply_offset" in profile else {}),
+                **{
+                    option: profile[option]
+                    for option in ("apply_offset", "apply_target")
+                    if option in profile
+                },
                 **(
                     {"curve": [dict(point) for point in profile["curve"]]}
                     if "curve" in profile

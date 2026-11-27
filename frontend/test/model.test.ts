@@ -45,6 +45,15 @@ describe("validation (same codes as the backend)", () => {
     expect(codes(schedule())).toEqual([]);
   });
 
+  it.each([false, true, "false", null, 0])("validates plan target application: %j", value => {
+    const data = schedule();
+    Object.assign(data.profiles.workday, { apply_target: value });
+    const issues = validateSchedule(data, 20, 70);
+    expect(issues).toEqual(typeof value === "boolean" ? [] : [
+      { code: "invalid_format", path: "profiles.workday.apply_target", params: {} },
+    ]);
+  });
+
   it.each([
     [[], "too_few_points"],
     [[{ t: "05:03", v: 40 }], "time_not_on_grid"],

@@ -61,6 +61,81 @@ async def test_writes_on_start_and_on_interval(
     assert target_value(hass) == 60
 
 
+@pytest.mark.parametrize("numeric", [False, True])
+@pytest.mark.parametrize("selection", ["override", "exception"])
+async def test_plan_can_pause_target_updates(
+    hass: HomeAssistant,
+    berlin: None,
+    target: str,
+    freezer: FrozenDateTimeFactory,
+    *,
+    numeric: bool,
+    selection: str,
+) -> None:
+    from .test_axis import SENSOR_OPTIONS
+
+    freezer.move_to(THURSDAY_NOON)
+    hass.states.async_set("sensor.outdoor_temperature", "10")
+    entry = await setup_entry(
+        hass,
+        make_entry(
+            watch_target=True,
+            **{**(SENSOR_OPTIONS if numeric else {}), "interpolation": "step"},
+        ),
+    )
+    runtime = entry.runtime_data
+    schedule = runtime.schedule_dict()
+    for profile in schedule["profiles"].values():
+        profile["points"] = [{"t": "00:00", "v": 45}]
+        if numeric:
+            profile["curve"] = [{"x": 0, "v": 45}]
+    schedule["profiles"]["day_off"]["apply_target"] = False
+    await runtime.async_save_schedule(schedule, runtime.revision)
+    assert target_value(hass) == 45
+    if selection == "override":
+        await runtime.async_set_override("day_off", None)
+    else:
+        today = dt_util.now().date()
+        await runtime.async_add_exception(today, today, "day_off")
+    assert runtime.current.profile_id == "day_off"
+    assert runtime.enabled
+    await hass.services.async_call(
+        "input_number", "set_value", {"entity_id": target, "value": 49}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert runtime.offset == 0
+    schedule = runtime.schedule_dict()
+    schedule["profiles"]["day_off"]["points"][0]["v"] = 55
+    if numeric:
+        schedule["profiles"]["day_off"]["curve"][0]["v"] = 55
+    await runtime.async_save_schedule(schedule, runtime.revision)
+    await hass.services.async_call(
+        DOMAIN, "apply_now", {"config_entry_id": entry.entry_id}, blocking=True
+    )
+    hass.states.async_set("sensor.outdoor_temperature", "20")
+    await tick(hass, freezer, timedelta(minutes=5))
+    assert target_value(hass) == 49
+    assert float(hass.states.get("sensor.zirkulation_curve_value").state) == 55
+    await hass.config_entries.async_reload(entry.entry_id)
+    runtime = entry.runtime_data
+    assert runtime.data["profiles"]["day_off"]["apply_target"] is False
+    assert target_value(hass) == 49
+    if selection == "override":
+        await runtime.async_clear_override()
+    else:
+        freezer.move_to("2026-10-30 12:00:00+01:00")
+        await tick(hass, freezer, timedelta(minutes=5))
+    assert target_value(hass) == 45
+    await runtime.async_set_override("day_off", None)
+    schedule = runtime.schedule_dict()
+    schedule["profiles"]["day_off"]["apply_target"] = True
+    await runtime.async_save_schedule(schedule, runtime.revision)
+    assert target_value(hass) == 55
+    await runtime.async_set_enabled(False)
+    await runtime.async_set_override("workday", None)
+    assert target_value(hass) == 55
+
+
 async def test_value_in_one_hour_attribute(
     hass: HomeAssistant, berlin: None, target: str, freezer: FrozenDateTimeFactory
 ) -> None:

@@ -29,6 +29,22 @@ def codes(issues) -> list[str]:
     return [issue.code for issue in issues]
 
 
+@pytest.mark.parametrize("value", [False, True])
+def test_plan_target_option_is_preserved(schedule: dict, value: bool) -> None:
+    schedule["profiles"]["workday"]["apply_target"] = value
+    assert validate_schedule(schedule, 20, 70) == []
+    assert normalize_schedule(schedule)["profiles"]["workday"]["apply_target"] is value
+
+
+@pytest.mark.parametrize("value", [None, "false", 0, 1])
+def test_plan_target_option_requires_boolean(schedule: dict, value: object) -> None:
+    schedule["profiles"]["workday"]["apply_target"] = value
+    issues = validate_schedule(schedule, 20, 70)
+    assert [(issue.code, issue.path) for issue in issues] == [
+        ("invalid_format", "profiles.workday.apply_target")
+    ]
+
+
 @pytest.mark.parametrize(("language", "name"), [("en", "Default"), ("de", "Standard")])
 def test_default_schedule_is_valid(language: str, name: str) -> None:
     schedule = default_schedule(20, 70, 0.5, language)
