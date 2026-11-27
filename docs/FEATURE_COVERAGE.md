@@ -18,12 +18,12 @@ user guide; corresponding German sections cover the same workflows.
 | Month checkbox conditions and native local-time ranges, including overnight and boundary timing | Editing → Activations |
 | Nested AND/OR/NOT and date-aware weekday/month/holiday leaves | Editing → Activations |
 | Preview limitations: current entity states and live clock, no simulated intraday switches | Editing → Activations; Developer architecture |
-| Manual mode, expiry, precedence, inclusive exceptions and overlap priority | Today; Activations; Exceptions; Calculation; Actions |
+| Manual mode, expiry, precedence, inclusive exceptions and overlap priority | Active plan; Activations; Exceptions; Calculation; Actions |
 | Save/discard/undo/redo, unsaved changes and conflicts | Saving; Sidebar editor; Features |
 | Sidebar/card access, authenticated editing and admin-only setup/clone | Setup; optional card; WebSocket API |
 | Compact/full/graph views, independent editor and display controls, YAML example | Add the card (optional) |
 | Whole-curve clone and disabled start | Clone a whole curve |
-| Target watching, additive offset, per-plan opt-out and dashed output graphs | Keep manual target adjustments; Today; sensor/seasonal examples |
+| Target watching, additive offset, per-plan opt-out and dashed output graphs | Keep manual target adjustments; Active plan; sensor/seasonal examples |
 | Persistence, target changes, watching off, offline changes | Keep manual target adjustments |
 | Raw/adjusted/offset sensors and stable old sensor identity | Entities; Keep manual target adjustments |
 | Clear offset by UI or automation action | Keep manual target adjustments; Actions |
@@ -39,12 +39,13 @@ user guide; corresponding German sections cover the same workflows.
 ## Screenshot coverage
 
 `frontend/demo/screenshots.cjs` captures matching English and German images from
-fixed local fixtures: today, dark mobile, desktop/mobile plans, activations,
-exceptions, sidebar, sensor curve and seasonal curve. Time graphs carry +5 °C;
-numeric graphs carry +4 °C. Captures wait for the offset path and use a fixed
+fixed local fixtures: active plan, dark mobile, desktop/mobile plans, activations,
+exceptions, sidebar, and time-of-day, weekly, sensor and seasonal curves. Light
+time graphs carry +5 °C, dark mobile −3 °C, sensor −6 °C, weekly −2 °C and seasonal
++4 °C. Captures wait for the offset path and use a fixed
 Europe/Berlin timezone. The editing graph shows unadjusted points. These captures illustrate a subset
-of the condition types and input sources; they do not show the new month/time
-condition controls or the day-of-week axis.
+of the condition types; they do not show the month/time
+condition controls.
 
 ## Scope of this audit
 

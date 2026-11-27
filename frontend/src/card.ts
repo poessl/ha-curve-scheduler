@@ -1,5 +1,5 @@
 /**
- * <curve-scheduler-card>: today's plan at a glance plus the editor.
+ * <curve-scheduler-card>: the active plan at a glance plus the editor.
  */
 
 import { LitElement, css, html, nothing, type PropertyValues } from "lit";
@@ -273,7 +273,7 @@ export class CurveSchedulerCard extends LitElement {
 
   // ------------------------------------------------------------------
 
-  private renderToday(data: InstanceData) {
+  private renderActivePlan(data: InstanceData) {
     const { state, schedule, config } = data;
     const profile = schedule.profiles[state.profile_id];
     const ids = state.timeline.map((d) => d.profile_id);
@@ -428,7 +428,7 @@ export class CurveSchedulerCard extends LitElement {
     } else {
       const showEditor = this.canEdit && (this.editorMode === "always" || this._editorOpen);
       content = html`
-        ${this.renderToday(this._data)}
+        ${this.renderActivePlan(this._data)}
         ${showEditor
           ? html`<curve-scheduler-editor
               .hass=${this.hass}

@@ -38,19 +38,43 @@ Datumsausnahmen und manuelle Übersteuerungen. Bearbeitet wird in der
 Tastatur. Für die alltägliche Planbearbeitung sind keine Admin-Rechte erforderlich.
 
 <p align="center">
-  <img src="docs/images/today-de.webp" width="420" alt="Tageskurve mit Versatz">
-  <img src="docs/images/today-dark-mobile-de.webp" width="260" alt="Tageskurve am Handy im dunklen Design">
+  <img src="docs/images/today-de.webp" width="420" alt="Aktiver Plan mit Versatz">
+  <img src="docs/images/today-dark-mobile-de.webp" width="260" alt="Aktiver Plan am Handy im dunklen Design">
 </p>
 
-Die Screenshots verwenden feste lokale Demo-Daten. Die durchgezogene farbige Linie
-zeigt den unveränderten Plan, die grau gestrichelte Linie den Ausgang mit
-**+5 °C Versatz**. Die rote Markierung zeigt den aktuellen Eingang.
+## Inhaltsverzeichnis
 
-[Benutzerhandbuch](#benutzerhandbuch): [Installation](#installation) · [Einrichtung](#einrichtung-einmalig-durch-einen-administrator) ·
-[Bearbeiten](#bearbeiten-in-seitenleiste-und-karte) · [Versatz](#manuelle-zieländerungen-beibehalten) ·
-[Wochen-, Sensor- und Jahreskurven](#wochen--sensor--und-jahreskurven-verwenden) · [Aktionen](#aktionen-dienste)
-
-[Entwicklerhandbuch](#entwicklerhandbuch): Architektur, APIs, lokale Entwicklung und Screenshot-Erstellung.
+- [Benutzerhandbuch](#benutzerhandbuch)
+  - [Funktionen](#funktionen)
+  - [Installation](#installation)
+    - [HACS (empfohlen)](#hacs-empfohlen)
+    - [Manuell](#manuell)
+  - [Einrichtung (einmalig durch einen Administrator)](#einrichtung-einmalig-durch-einen-administrator)
+    - [Editor in der Seitenleiste öffnen](#editor-in-der-seitenleiste-öffnen)
+    - [Ganze Kurve klonen](#ganze-kurve-klonen)
+    - [Karte hinzufügen (optional)](#karte-hinzufügen-optional)
+  - [Bearbeiten in Seitenleiste und Karte](#bearbeiten-in-seitenleiste-und-karte)
+    - [Aktiver Plan](#aktiver-plan)
+    - [Pläne](#pläne)
+    - [Aktivierungen](#aktivierungen)
+    - [Ausnahmen](#ausnahmen)
+    - [Speichern](#speichern)
+  - [Manuelle Zieländerungen beibehalten](#manuelle-zieländerungen-beibehalten)
+  - [So wird der Wert berechnet](#so-wird-der-wert-berechnet)
+  - [Wann wird geschrieben?](#wann-wird-geschrieben)
+  - [Entities](#entities)
+  - [Wochen-, Sensor- und Jahreskurven verwenden](#wochen--sensor--und-jahreskurven-verwenden)
+    - [Beispiel: Heizkurve nach Außentemperatur](#beispiel-heizkurve-nach-außentemperatur)
+    - [Beispiel: eine durchgehende Wochenkurve](#beispiel-eine-durchgehende-wochenkurve)
+    - [An Grenzen stoppen oder wiederholen](#an-grenzen-stoppen-oder-wiederholen)
+    - [Diagramme lesbarer machen](#diagramme-lesbarer-machen)
+  - [Aktionen (Dienste)](#aktionen-dienste)
+- [Entwicklerhandbuch](#entwicklerhandbuch)
+  - [Architektur und Kompatibilität](#architektur-und-kompatibilität)
+  - [WebSocket-API](#websocket-api)
+  - [Einrichtung und Prüfungen](#einrichtung-und-prüfungen)
+  - [README-Screenshots erneuern](#readme-screenshots-erneuern)
+- [Lizenz](#lizenz)
 
 ## Benutzerhandbuch
 
@@ -158,7 +182,7 @@ bleiben gleich: Vor dem Aktivieren unter **Kurveneinstellungen → Konfigurieren
 #### Karte hinzufügen (optional)
 
 Dashboard bearbeiten → **Karte hinzufügen** → **Curve Scheduler**, dann eine
-Instanz wählen. **Kompakt** zeigt den heutigen Verlauf mit Editor-Schaltfläche,
+Instanz wählen. **Kompakt** zeigt den aktiven Plan mit Editor-Schaltfläche,
 **Voll** öffnet den Editor dauerhaft, **Nur Diagramm** blendet Informationen und
 Bedienelemente standardmäßig aus.
 
@@ -197,11 +221,11 @@ Einrichtung, Konfiguration und das Klonen ganzer Kurven erfordern Admin-Rechte.
 
 ### Bearbeiten in Seitenleiste und Karte
 
-#### Heute
+#### Aktiver Plan
 
-<img src="docs/images/today-de.webp" width="420" align="right" alt="Heutiger Verlauf mit Versatz">
+<img src="docs/images/today-de.webp" width="420" align="right" alt="Aktiver Plan mit Versatz">
 
-Das Diagramm zeigt den heutigen Plan und gegebenenfalls den gestrichelten Ausgang
+Das Diagramm zeigt den aktiven Plan und gegebenenfalls den gestrichelten Ausgang
 mit Versatz. Die rote Linie markiert die aktuelle Uhrzeit. Die Zusammenfassung
 zeigt den aktuellen angepassten Wert und den nächsten Planpunkt; dieser Punkt
 gehört zum unveränderten Plan.
@@ -334,8 +358,21 @@ gespeicherten Versatz und den tatsächlichen Ausgang.
 
 ### So wird der Wert berechnet
 
-- Ein Zeitplan beschreibt 00:00 bis 24:00. **Über Mitternacht** läuft die Kurve zum ersten Punkt des **Folgetagsplans**. Ein Wechsel vom Werktag zum Wochenende erzeugt damit keinen Sprung, außer bei *Stufe*.
-- Priorität: **manueller Modus > Datumsausnahme > erste passende Aktivierung > konfigurierter Rückfallplan**.
+Ein Plan definiert eine Kurve über der gewählten X-Achse. Er bleibt aktiv,
+solange er ausgewählt ist: für einen Teil des Tages, mehrere Tage oder länger.
+Die Laufzeit wertet die Auswahl bei Ausgangsaktualisierungen und relevanten
+Entitätsänderungen neu aus. Es gilt:
+**manueller Modus > Datumsausnahme > erste passende Aktivierung > konfigurierter Rückfallplan**.
+Eine Zeitbedingung oder Entitätsänderung kann also innerhalb eines Tages einen
+anderen Plan auswählen; dadurch kann sich der Ausgang sofort ändern.
+
+- Bei **Tageszeit** liegen die Punkte zwischen 00:00 und 24:00. Zur Interpolation
+  um Mitternacht ermittelt die Laufzeit auch die Pläne benachbarter Daten und
+  verbindet deren Punkte. Das ermöglicht weiche Übergänge zwischen datumsabhängigen
+  Plänen, glättet aber keine beliebigen Planwechsel durch Live-Bedingungen.
+- Bei **Wochentag**, **Jahresmonat** oder **Sensorwert** wird der aktive Plan am
+  aktuellen Eingangswert ausgewertet. Umlauf verbindet die Enden seiner Kurve;
+  verschiedene Pläne werden dadurch nicht miteinander überblendet.
 - *Kurve* verwendet monotone kubische Interpolation (PCHIP, Fritsch–Carlson). Sie verläuft durch die Punkte, ohne Überschwingen und ohne Knicke. *Weich* verwendet Smoothstep zwischen jeweils zwei Punkten.
 - Gerechnet wird nach lokaler Uhrzeit. Bei der Zeitumstellung kann eine Stunde übersprungen oder wiederholt werden. Die Kurve folgt der Wanduhr, statt auf eine feste verstrichene Tagesdauer gestreckt zu werden; die betroffene Stunde hängt von der Zeitzone ab.
 - Vor dem Schreiben wird auf Min/Max begrenzt und auf die Schrittweite gerundet.
@@ -395,11 +432,10 @@ obere Grenze ausgeschlossen; für den Montagspunkt 1 statt 8 verwenden. Ohne
 Umlauf hält die Kurve ihre Endwerte.
 
 <p>
-  <img src="docs/images/sensor-offset-de.webp" width="420" alt="Heizkurve mit Außentemperatur und gestricheltem Ausgang mit +4 °C Versatz">
+  <img src="docs/images/sensor-offset-de.webp" width="420" alt="Heizkurve nach Außentemperatur mit negativem Versatz">
   <img src="docs/images/seasonal-offset-de.webp" width="420" alt="Umlaufende Jahreskurve mit gestricheltem Ausgang mit +4 °C Versatz">
 </p>
 
-Die Beispiele zeigen weiche Heiz- und Jahreskurven mit +4 °C Versatz.
 Zusammenfassung und gestrichelte Kurve zeigen den angepassten Ausgang;
 **Eingang → Ausgang** im numerischen Diagramm zeigt den unveränderten Kurvenwert.
 
@@ -417,6 +453,8 @@ Werte gesendet.
 
 #### Beispiel: eine durchgehende Wochenkurve
 
+<img src="docs/images/weekly-offset-de.webp" width="560" alt="Wochenheizkurve mit Wochentagsbeschriftung und negativem Versatz">
+
 1. Beim Hinzufügen oder Konfigurieren **Wochentag** wählen. X-Minimum **1**,
    Maximum **8** und **X umlaufend** beibehalten.
 2. In einem Plan etwa **1 → 40**, **1,5 → 55**, **6 → 45** und **7,5 → 50**
@@ -426,8 +464,7 @@ Werte gesendet.
 
 Das Diagramm beschriftet Wochentage und zeigt bei Nachkommawerten die Uhrzeit;
 die genauen Punktfelder verwenden weiterhin numerische X-Werte. Eine Wochenkurve
-beschreibt je Plan eine ganze Woche. Eine **Wochentagsbedingung** wählt dagegen
-den Plan für ein Datum. Für eine einzige durchgehende Wochenform denselben Plan
+beschreibt je Plan eine ganze Woche. Eine **Wochentagsbedingung** trägt dagegen zur Auswahl des aktuell aktiven Plans bei. Für eine einzige durchgehende Wochenform denselben Plan
 die ganze Woche aktiv lassen; ein Planwechsel kann den Ausgang sofort ändern.
 
 #### An Grenzen stoppen oder wiederholen
@@ -586,8 +623,8 @@ npm run screenshots
 ```
 
 Das Skript erzeugt WebP-Bilder auf **Englisch und Deutsch**: hell/dunkel,
-Desktop/Handy, Seitenleiste, Pläne, Aktivierungen, Ausnahmen sowie Sensor- und
-Jahreskurven. Die Browserzeitzone ist Europe/Berlin; vor Diagrammaufnahmen wartet
+Desktop/Handy, Seitenleiste, Pläne, Aktivierungen, Ausnahmen und alle vier
+X-Achsen mit positivem und negativem Versatz. Die Browserzeitzone ist Europe/Berlin; vor Diagrammaufnahmen wartet
 es auf den Versatzpfad. Zeit und Werte sind in `demo/demo.ts` festgelegt.
 `DEMO_URL` wählt bei Bedarf einen anderen lokalen Server.
 

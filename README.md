@@ -36,19 +36,43 @@ Edit in the **sidebar** or a **dashboard card**, using touch, mouse, exact field
 or the keyboard. Everyday schedule editing does not require admin rights.
 
 <p align="center">
-  <img src="docs/images/today-en.webp" width="420" alt="Card: today's plan">
+  <img src="docs/images/today-en.webp" width="420" alt="Card: active plan">
   <img src="docs/images/today-dark-mobile-en.webp" width="260" alt="Card on a phone, dark theme">
 </p>
 
-Screenshots use deterministic local demo data. The solid colored line is the
-unadjusted plan; the gray dashed line is the output with a **+5 °C offset**.
-The red marker shows the current input.
+## Contents
 
-[User guide](#user-guide): [Installation](#installation) · [Setup](#setup-once-by-an-administrator) ·
-[Editing](#editing-in-the-sidebar-or-card) · [Offsets](#keep-manual-target-adjustments) ·
-[Weekly, sensor and seasonal curves](#use-a-weekly-sensor-or-seasonal-curve) · [Actions](#actions-services)
-
-[Developer guide](#developer-guide): architecture, APIs, local development and screenshot generation.
+- [User guide](#user-guide)
+  - [Features](#features)
+  - [Installation](#installation)
+    - [HACS (recommended)](#hacs-recommended)
+    - [Manual](#manual)
+  - [Setup (once, by an administrator)](#setup-once-by-an-administrator)
+    - [Open the sidebar editor](#open-the-sidebar-editor)
+    - [Clone a whole curve](#clone-a-whole-curve)
+    - [Add the card (optional)](#add-the-card-optional)
+  - [Editing in the sidebar or card](#editing-in-the-sidebar-or-card)
+    - [Active plan](#active-plan)
+    - [Plans](#plans)
+    - [Activations](#activations)
+    - [Exceptions](#exceptions)
+    - [Saving](#saving)
+  - [Keep manual target adjustments](#keep-manual-target-adjustments)
+  - [How the value is calculated](#how-the-value-is-calculated)
+  - [When is the value written?](#when-is-the-value-written)
+  - [Entities](#entities)
+  - [Use a weekly, sensor or seasonal curve](#use-a-weekly-sensor-or-seasonal-curve)
+    - [Example: an outdoor-temperature heating curve](#example-an-outdoor-temperature-heating-curve)
+    - [Example: one continuous weekly curve](#example-one-continuous-weekly-curve)
+    - [Stop at the limits or repeat](#stop-at-the-limits-or-repeat)
+    - [Make the graph easier to read](#make-the-graph-easier-to-read)
+  - [Actions (services)](#actions-services)
+- [Developer guide](#developer-guide)
+  - [Architecture and compatibility](#architecture-and-compatibility)
+  - [WebSocket API](#websocket-api)
+  - [Setup and validation](#setup-and-validation)
+  - [Refresh the README screenshots](#refresh-the-readme-screenshots)
+- [License](#license)
 
 ## User guide
 
@@ -152,7 +176,7 @@ and target as the original: check **Curve settings → Configure** before enabli
 #### Add the card (optional)
 
 Edit a dashboard → **Add card** → **Curve Scheduler**, then select an instance.
-Choose **Compact** (today with an editor button), **Full** (editor open), or
+Choose **Compact** (active plan with an editor button), **Full** (editor open), or
 **Graph only** (chart with information and controls hidden by default).
 
 | Card option | Effect |
@@ -190,11 +214,11 @@ cloning require admin rights.
 
 ### Editing in the sidebar or card
 
-#### Today
+#### Active plan
 
-<img src="docs/images/today-en.webp" width="420" align="right" alt="Today view">
+<img src="docs/images/today-en.webp" width="420" align="right" alt="Active plan view">
 
-The chart shows today's plan and, when applicable, its dashed offset-adjusted
+The chart shows the active plan and, when applicable, its dashed offset-adjusted
 output. The red line marks the current time. The summary shows the current
 adjusted value and the next planned point; the next point belongs to the
 unadjusted plan.
@@ -208,8 +232,8 @@ unadjusted plan.
 #### Plans
 
 <p>
-  <img src="docs/images/editor-profiles-en.webp" width="420" alt="Daily plan editor">
-  <img src="docs/images/editor-profiles-mobile-en.webp" width="260" alt="Daily plan editor on a phone">
+  <img src="docs/images/editor-profiles-en.webp" width="420" alt="Plan editor">
+  <img src="docs/images/editor-profiles-mobile-en.webp" width="260" alt="Plan editor on a phone">
 </p>
 
 - Choose the plan at the top. **+ New plan**, rename, pick a color, **Duplicate** or **Delete plan**.
@@ -333,10 +357,20 @@ plan; the value labels show the retained adjustment and actual output.
 
 ### How the value is calculated
 
-- A plan describes a day from 00:00 to 24:00. **Across midnight** the curve
-  runs towards the first point of the **next day's plan**, so switching from
-  workday to weekend does not cause a jump (except in *step* mode).
-- Priority for a day: **manual mode > date exception > first matching activation > configured fallback plan**.
+A plan defines a curve over the selected X-axis. It stays active while it is
+selected, which can be part of a day, several days or longer. The runtime
+reevaluates selection on output updates and relevant entity changes, using:
+**manual mode > date exception > first matching activation > configured fallback plan**.
+A time condition or entity change can therefore select another plan within a day;
+that switch can cause an immediate change in output.
+
+- With **Time of day**, points cover 00:00–24:00. For interpolation around
+  midnight, the runtime also resolves plans for neighboring dates and connects
+  their points. This supports smooth transitions between date-based plans;
+  it does not smooth arbitrary plan switches caused by live conditions.
+- With **Day of week**, **Month of year** or **Sensor**, the active plan is
+  evaluated at the current input coordinate. Wrapping joins the ends of that
+  plan's curve; it does not blend different plans.
 - *Curve* uses monotone cubic interpolation (PCHIP, Fritsch–Carlson). It goes
   through every point, never overshoots and has no kinks. *Smooth* uses
   smoothstep between two points.
@@ -399,11 +433,10 @@ minutes. With wrapping, the upper limit is excluded; use 1 rather than 8 for the
 Monday boundary. Without wrapping, the curve holds its endpoint values.
 
 <p>
-  <img src="docs/images/sensor-offset-en.webp" width="420" alt="Outdoor-temperature heating curve with dashed +4 °C offset output">
+  <img src="docs/images/sensor-offset-en.webp" width="420" alt="Outdoor-temperature heating curve with a negative offset">
   <img src="docs/images/seasonal-offset-en.webp" width="420" alt="Wrapping seasonal curve with dashed +4 °C offset output">
 </p>
 
-These examples show smooth heating and seasonal plans with a +4 °C adjustment.
 The summary and dashed curve show the adjusted output; the numeric graph's
 **Input → Output** readout shows the unadjusted curve value.
 
@@ -421,6 +454,8 @@ If the input sensor is unavailable, the curve stops sending values until it retu
 
 #### Example: one continuous weekly curve
 
+<img src="docs/images/weekly-offset-en.webp" width="560" alt="Weekly heating curve with weekday labels and a negative offset">
+
 1. Choose **Day of week** when adding or configuring a curve. Keep X minimum
    **1**, maximum **8** and **Wrap input** enabled.
 2. In one plan, add points such as **1 → 40**, **1.5 → 55**, **6 → 45** and
@@ -430,8 +465,7 @@ If the input sensor is unavailable, the curve stops sending values until it retu
 
 The chart labels weekdays and includes the time for fractional coordinates;
 exact point fields still use numeric X values. A weekly curve describes a whole
-week in each plan. A **Weekday** activation instead selects which plan to use on
-a date. Keep the same plan active throughout the week for a single continuous
+week in each plan. A **Weekday** activation instead helps select the currently active plan. Keep the same plan active throughout the week for a single continuous
 weekly shape; selecting another plan can change the output immediately.
 
 #### Stop at the limits or repeat
@@ -588,8 +622,8 @@ npm run screenshots
 ```
 
 The capture script produces English **and German** WebP images: light/dark,
-desktop/mobile, sidebar, plans, activations, exceptions, sensor and seasonal
-curves. It fixes the browser timezone to Europe/Berlin and waits for the offset
+desktop/mobile, sidebar, plans, activations, exceptions, and all four X-axis
+sources with positive and negative offsets. It fixes the browser timezone to Europe/Berlin and waits for the offset
 path before graph captures. Demo time and values are fixed in `demo/demo.ts`;
 `DEMO_URL` can select a different local server.
 

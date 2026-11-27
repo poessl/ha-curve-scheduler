@@ -20,6 +20,7 @@ const base = process.env.DEMO_URL ?? "http://127.0.0.1:8765/demo/index.html";
         ["sidebar-editor", 960, "surface=panel", 0],
         ["sensor-offset", 760, "entry_id=sensor", undefined],
         ["seasonal-offset", 760, "entry_id=month", undefined],
+        ["weekly-offset", 760, "entry_id=week", undefined],
         ["editor-exceptions", 760, "view=full", 2],
       ]) {
         const page = await browser.newPage({ viewport: { width, height: 2200 }, deviceScaleFactor: 2, timezoneId: "Europe/Berlin", locale: language === "en" ? "en-GB" : "de-DE" });

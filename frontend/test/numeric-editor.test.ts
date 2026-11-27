@@ -161,4 +161,6 @@ it("labels the built-in weekly axis with weekdays", async () => {
   expect(labels[0].textContent).toBe("Mon");
   expect(labels[6].textContent).toBe("Sun");
   expect(labels[7].textContent).toBe("Mon +1");
+  expect(labels[0].getAttribute("style")).toBe("text-anchor:start");
+  expect(labels[7].getAttribute("style")).toBe("text-anchor:end");
 });

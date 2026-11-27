@@ -50,10 +50,10 @@ describe("curve-scheduler-card", () => {
     expect(window.customCards?.some((c) => c.type === "curve-scheduler-card")).toBe(true);
   });
 
-  it("shows today's summary", async () => {
+  it("shows the active plan summary", async () => {
     const { card } = await mount({});
     const text = card.shadowRoot!.querySelector(".headline")!.textContent;
-    expect(text).toBe("Heute: Werktag · jetzt 60\u00a0°C · ab 18:00 → 45\u00a0°C");
+    expect(text).toBe("Aktiver Plan: Werktag · jetzt 60\u00a0°C · ab 18:00 → 45\u00a0°C");
     expect(card.shadowRoot!.querySelector("curve-scheduler-curve")).not.toBeNull();
     expect(card.shadowRoot!.querySelector("curve-scheduler-editor")).toBeNull();
   });

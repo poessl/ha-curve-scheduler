@@ -19,7 +19,7 @@ const params = new URLSearchParams(location.search);
 const english = params.get("lang") === "en";
 document.documentElement.lang = english ? "en" : "de";
 const text = (en: string, de: string) => english ? en : de;
-const NOW = "2026-11-26T14:20:00+01:00";
+const NOW = "2026-11-26T14:24:00+01:00";
 const holidays = new Set(["2026-12-25", "2026-12-26"]);
 const schedule: Schedule = {
   profiles: {
@@ -44,15 +44,16 @@ const schedule: Schedule = {
 const config: InstanceConfig = { watch_target: true, target: "number.circulation_setpoint", interval: 5, output_tick_seconds: 60, interpolation: "curve", min: 20, max: 70, step: 0.5, unit: "°C", holiday_source: null, threshold: 0 };
 interface DemoInstance { title: string; config: InstanceConfig; schedule: Schedule; revision: number; offset?: number; enabled: boolean; override: { profile: string; until: string | null } | null; }
 const instances: Record<string, DemoInstance> = {
-  demo: { title: text("Circulation", "Zirkulation"), config, schedule, revision: 7, offset: 5, enabled: true, override: null },
-  sensor: { title: text("Heating curve", "Heizkurve"), config: { ...config, target: "", x_label_step: 10, axis: { source: "sensor", input_entity: "sensor.outdoor_temperature", min: -20, max: 40, step: 0.5, wrap: false } }, schedule: clone(schedule), revision: 1, offset: 4, enabled: true, override: null },
+  demo: { title: text("Circulation", "Zirkulation"), config, schedule, revision: 7, offset: params.get("theme") === "dark" ? -3 : 5, enabled: true, override: null },
+  sensor: { title: text("Heating curve", "Heizkurve"), config: { ...config, target: "", x_label_step: 10, axis: { source: "sensor", input_entity: "sensor.outdoor_temperature", min: -20, max: 40, step: 0.5, wrap: false } }, schedule: clone(schedule), revision: 1, offset: -6, enabled: true, override: null },
+  week: { title: text("Weekly heating", "Wochenheizung"), config: { ...config, target: "", axis: { source: "day_of_week", input_entity: null, min: 1, max: 8, step: 0.01, wrap: true } }, schedule: clone(schedule), revision: 1, offset: -2, enabled: true, override: null },
   month: { title: text("Seasonal curve", "Jahreskurve"), config: { ...config, target: "", x_label_step: 2, axis: { source: "month_of_year", input_entity: null, min: 1, max: 13, step: 0.01, wrap: true } }, schedule: clone(schedule), revision: 1, offset: 4, enabled: true, override: null },
 };
 for (const [id, item] of Object.entries(instances)) {
   if (id === "demo") continue;
   for (const [plan, profile] of Object.entries(item.schedule.profiles)) {
     const offset = plan === "vacation" ? -5 : plan === "day_off" ? 2 : 0;
-    profile.curve = id === "sensor" ? [{ x: -20, v: 65 + offset }, { x: 0, v: 50 + offset }, { x: 15, v: 35 + offset }, { x: 40, v: 25 + offset }] : [{ x: 1, v: 60 + offset }, { x: 4, v: 45 + offset }, { x: 7, v: 30 + offset }, { x: 10, v: 45 + offset }];
+    profile.curve = id === "sensor" ? [{ x: -20, v: 65 + offset }, { x: 0, v: 50 + offset }, { x: 15, v: 35 + offset }, { x: 40, v: 25 + offset }] : id === "week" ? [{ x: 1, v: 42 + offset }, { x: 2.5, v: 57 + offset }, { x: 4.5, v: 45 + offset }, { x: 6, v: 62 + offset }, { x: 7.5, v: 48 + offset }] : [{ x: 1, v: 60 + offset }, { x: 4, v: 45 + offset }, { x: 7, v: 30 + offset }, { x: 10, v: 45 + offset }];
   }
 }
 const listeners = new Map<(data: InstanceData) => void, string>();
@@ -63,7 +64,7 @@ function snapshot(id: string): InstanceData {
   const resolved = days.map(day => item.override ? { profileId: item.override.profile, reason: "override" as const } : resolveDay(item.schedule, day, d => holidays.has(d)));
   const axis = item.config.axis;
   const numeric = axis && axis.source !== "time_of_day";
-  const x = numeric ? axis.source === "sensor" ? 10 : 11.83 : 860;
+  const x = numeric ? axis.source === "sensor" ? 10 : axis.source === "day_of_week" ? 4.6 : 11.83 : 864;
   let timeline: Point[];
   if (numeric) {
     timeline = item.schedule.profiles[resolved[2].profileId].curve!.map(p => [p.x, p.v]);

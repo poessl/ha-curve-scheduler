@@ -499,7 +499,7 @@ export class CurveSchedulerCurve extends LitElement {
         (minute) => svg`
           <line class="grid" x1=${this.xFor(minute)} x2=${this.xFor(minute)}
             y1=${PAD_TOP} y2=${bottom}></line>
-          <text class="label x" x=${this.xFor(minute)} y=${bottom + 17}>${this.axis ? this.formatX(minute) : this.xLabelStep > 0 ? formatTime(minute) : minute / 60}</text>`,
+          <text class="label x" style=${minute === this.domainStart ? "text-anchor:start" : minute === this.domainEnd ? "text-anchor:end" : ""} x=${this.xFor(minute)} y=${bottom + 17}>${this.axis ? this.formatX(minute) : this.xLabelStep > 0 ? formatTime(minute) : minute / 60}</text>`,
       )}
       ${
         !this.axis && this.showContinuation
