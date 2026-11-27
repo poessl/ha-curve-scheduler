@@ -1,200 +1,135 @@
-/**
- * Demo page with an in-memory fake of the Curve Scheduler backend.
- * Used for development (npm run demo) and the README screenshots.
- */
-
+/** Local, deterministic fixtures for README screenshots; never connects to HA. */
 import "../src/curve-scheduler-card";
-import { Interpolator, buildTimeline, formatTime, roundToStep } from "../src/interpolation";
-import {
-  addDays,
-  profilePoints,
-  resolveDay,
-  validateSchedule,
-  type InstanceData,
-  type Schedule,
-} from "../src/model";
+import type { CurveSchedulerPanel } from "../src/panel";
+import "../src/panel";
+import { Interpolator, buildTimeline, formatTime, roundToStep, type Point } from "../src/interpolation";
+import { addDays, clone, profilePoints, resolveDay, validateSchedule, type InstanceConfig, type InstanceData, type Schedule } from "../src/model";
+import type { HomeAssistant } from "../src/api";
 
-customElements.define(
-  "ha-card",
-  class extends HTMLElement {
-    connectedCallback() {
-      this.style.display = "block";
-    }
-  },
-);
+customElements.define("ha-card", class extends HTMLElement { connectedCallback() { this.style.cssText = "display:block;background:var(--card-background-color);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.2);color:var(--primary-text-color)"; } });
+customElements.define("ha-menu-button", class extends HTMLElement { connectedCallback() { this.textContent = "☰"; this.style.padding = "12px"; } });
+// HA supplies this element in production; the demo only displays a fixture source.
+customElements.define("ha-entity-picker", class extends HTMLElement {
+  private input = document.createElement("input");
+  set value(value: string) { this.input.value = value; }
+  connectedCallback() { this.input.readOnly = true; this.input.style.cssText = "box-sizing:border-box;width:100%;padding:12px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);font:inherit"; this.append(this.input); }
+});
 
 const params = new URLSearchParams(location.search);
-const NOW = params.get("now") ?? "2026-10-29T14:20:00+01:00";
-const holidays = new Set(["2026-10-31", "2026-11-01", "2026-12-25", "2026-12-26"]);
-
-let schedule: Schedule = {
+const english = params.get("lang") === "en";
+document.documentElement.lang = english ? "en" : "de";
+const text = (en: string, de: string) => english ? en : de;
+const NOW = "2026-11-26T14:20:00+01:00";
+const holidays = new Set(["2026-12-25", "2026-12-26"]);
+const schedule: Schedule = {
   profiles: {
-    workday: {
-      name: "Werktag",
-      color: "#e67e22",
-      points: [
-        { t: "05:00", v: 45 },
-        { t: "05:30", v: 60 },
-        { t: "08:30", v: 60 },
-        { t: "09:00", v: 50 },
-        { t: "17:00", v: 50 },
-        { t: "17:30", v: 60 },
-        { t: "22:00", v: 60 },
-        { t: "22:30", v: 45 },
-      ],
-    },
-    day_off: {
-      name: "Frei",
-      color: "#27ae60",
-      points: [
-        { t: "07:00", v: 45 },
-        { t: "07:30", v: 60 },
-        { t: "22:00", v: 60 },
-        { t: "23:00", v: 45 },
-      ],
-    },
-    vacation: { name: "Urlaub", color: "#2980b9", points: [{ t: "12:00", v: 40 }] },
+    workday: { name: text("Workday", "Werktag"), color: "#e67e22", points: [{ t: "00:00", v: 36 }, { t: "06:00", v: 58 }, { t: "11:00", v: 43 }, { t: "17:00", v: 62 }, { t: "22:00", v: 46 }] },
+    day_off: { name: text("Day off", "Frei"), color: "#27ae60", points: [{ t: "01:00", v: 34 }, { t: "09:00", v: 60 }, { t: "15:00", v: 49 }, { t: "21:00", v: 57 }] },
+    vacation: { name: text("Away", "Abwesend"), color: "#2980b9", points: [{ t: "12:00", v: 35 }] },
   },
-  week: {
-    mon: "workday",
-    tue: "workday",
-    wed: "workday",
-    thu: "workday",
-    fri: "workday",
-    sat: "day_off",
-    sun: "day_off",
-  },
+  week: { mon: "workday", tue: "workday", wed: "workday", thu: "workday", fri: "workday", sat: "day_off", sun: "day_off" },
   holiday_profile: "day_off",
+  activations: [
+    { type: "holiday", source: "calendar.public_holidays", profile: "day_off" },
+    { type: "weekday", days: ["mon", "tue", "wed", "thu", "fri"], profile: "workday" },
+    { type: "weekday", days: ["sat", "sun"], profile: "day_off" },
+  ],
   exceptions: [
-    { id: "a1", from: "2026-08-03", to: "2026-08-14", profile: "vacation", note: "Sommerurlaub" },
-    { id: "b2", from: "2026-11-09", to: "2026-11-13", profile: "vacation", note: "Herbstferien" },
-    { id: "c3", from: "2026-12-24", to: "2027-01-06", profile: "vacation", note: "Weihnachten" },
+    { id: "past", from: "2026-10-12", to: "2026-10-16", profile: "vacation", note: text("Autumn break", "Herbstferien") },
+    { id: "trip", from: "2026-12-04", to: "2026-12-06", profile: "vacation", note: text("Weekend trip", "Wochenendreise") },
+    { id: "christmas", from: "2026-12-24", to: "2027-01-06", profile: "day_off", note: text("Christmas", "Weihnachten") },
   ],
   auto_cleanup: false,
 };
-let revision = 7;
-let override: { profile: string; until: string | null } | null = null;
-const listeners = new Set<(data: InstanceData) => void>();
-const config = {
-  target: "number.zirkulation_soll",
-  interval: 5,
-  interpolation: "curve" as const,
-  min: 20,
-  max: 70,
-  step: 0.5,
-  unit: "°C",
-  holiday_source: "binary_sensor.workday",
-  threshold: 0,
+const config: InstanceConfig = { watch_target: true, target: "number.circulation_setpoint", interval: 5, output_tick_seconds: 60, interpolation: "curve", min: 20, max: 70, step: 0.5, unit: "°C", holiday_source: null, threshold: 0 };
+interface DemoInstance { title: string; config: InstanceConfig; schedule: Schedule; revision: number; offset?: number; enabled: boolean; override: { profile: string; until: string | null } | null; }
+const instances: Record<string, DemoInstance> = {
+  demo: { title: text("Circulation", "Zirkulation"), config, schedule, revision: 7, offset: 5, enabled: true, override: null },
+  sensor: { title: text("Heating curve", "Heizkurve"), config: { ...config, target: "", x_label_step: 10, axis: { source: "sensor", input_entity: "sensor.outdoor_temperature", min: -20, max: 40, step: 0.5, wrap: false } }, schedule: clone(schedule), revision: 1, offset: 4, enabled: true, override: null },
+  month: { title: text("Seasonal curve", "Jahreskurve"), config: { ...config, target: "", x_label_step: 2, axis: { source: "month_of_year", input_entity: null, min: 1, max: 13, step: 0.01, wrap: true } }, schedule: clone(schedule), revision: 1, offset: 4, enabled: true, override: null },
 };
-
-function snapshot(): InstanceData {
+for (const [id, item] of Object.entries(instances)) {
+  if (id === "demo") continue;
+  for (const [plan, profile] of Object.entries(item.schedule.profiles)) {
+    const offset = plan === "vacation" ? -5 : plan === "day_off" ? 2 : 0;
+    profile.curve = id === "sensor" ? [{ x: -20, v: 65 + offset }, { x: 0, v: 50 + offset }, { x: 15, v: 35 + offset }, { x: 40, v: 25 + offset }] : [{ x: 1, v: 60 + offset }, { x: 4, v: 45 + offset }, { x: 7, v: 30 + offset }, { x: 10, v: 45 + offset }];
+  }
+}
+const listeners = new Map<(data: InstanceData) => void, string>();
+function snapshot(id: string): InstanceData {
+  const item = instances[id];
   const today = NOW.slice(0, 10);
-  const days = [-2, -1, 0, 1, 2].map((offset) => addDays(today, offset));
-  const resolved = days.map((day) =>
-    override
-      ? { profileId: override.profile, reason: "override" as const }
-      : resolveDay(schedule, day, (d) => holidays.has(d)),
-  );
-  const timeline = buildTimeline(resolved.map((r) => profilePoints(schedule.profiles[r.profileId])));
-  const interpolator = new Interpolator(timeline, config.interpolation);
-  const minute = Number(NOW.slice(11, 13)) * 60 + Number(NOW.slice(14, 16));
-  const next = timeline.find(([x]) => x > minute)!;
-  return {
-    entry_id: "demo",
-    title: "Zirkulation",
-    config,
-    schedule: JSON.parse(JSON.stringify(schedule)),
-    revision,
-    state: {
-      now: NOW,
-      enabled: true,
-      override,
-      value: roundToStep(interpolator.at(minute), config.step),
-      raw_value: interpolator.at(minute),
-      profile_id: resolved[2].profileId,
-      reason: resolved[2].reason,
-      next_point: {
-        time: "",
-        hhmm: formatTime(((next[0] % 1440) + 1440) % 1440),
-        value: next[1],
-      },
-      value_in_1h: roundToStep(interpolator.at(minute + 60), config.step),
-      target_available: true,
-      target_value: null,
-      timeline: days.map((date, i) => ({
-        date,
-        profile_id: resolved[i].profileId,
-        reason: resolved[i].reason,
-      })),
-    },
-  };
+  const days = [-2, -1, 0, 1, 2].map(offset => addDays(today, offset));
+  const resolved = days.map(day => item.override ? { profileId: item.override.profile, reason: "override" as const } : resolveDay(item.schedule, day, d => holidays.has(d)));
+  const axis = item.config.axis;
+  const numeric = axis && axis.source !== "time_of_day";
+  const x = numeric ? axis.source === "sensor" ? 10 : 11.83 : 860;
+  let timeline: Point[];
+  if (numeric) {
+    timeline = item.schedule.profiles[resolved[2].profileId].curve!.map(p => [p.x, p.v]);
+    if (axis.wrap) { const center = timeline; timeline = [-2, -1, 0, 1, 2].flatMap(n => center.map(([x, v]) => [x + n * (axis.max - axis.min), v] as Point)); }
+  } else timeline = buildTimeline(resolved.map(r => profilePoints(item.schedule.profiles[r.profileId])));
+  const interpolator = new Interpolator(timeline, item.config.interpolation);
+  const raw = interpolator.at(x);
+  const next = numeric ? undefined : timeline.find(([t]) => t > x);
+  return { entry_id: id, title: item.title, config: clone(item.config), schedule: clone(item.schedule), revision: item.revision, state: {
+    offset: item.offset ?? 0, curve_value: roundToStep(Math.min(item.config.max, Math.max(item.config.min, raw + (item.schedule.profiles[resolved[2].profileId].apply_offset === false ? 0 : item.offset ?? 0))), item.config.step),
+    now: NOW, enabled: item.enabled, override: item.override, value: roundToStep(raw, item.config.step), raw_value: raw, input_value: x, input_available: true, profile_id: resolved[2].profileId, reason: resolved[2].reason,
+    next_point: next ? { time: "2026-11-26T17:00:00+01:00", hhmm: formatTime(((next[0] % 1440) + 1440) % 1440), value: next[1] } : null,
+    value_in_1h: roundToStep(interpolator.at(numeric ? x : x + 60), item.config.step), target_available: true, target_value: null,
+    timeline: days.map((date, i) => ({ date, profile_id: resolved[i].profileId, reason: resolved[i].reason })),
+  } };
 }
-
-function publish() {
-  const data = snapshot();
-  listeners.forEach((listener) => listener(data));
-}
-
-const hass = {
-  user: { is_admin: false, name: "Demo" },
-  locale: { language: params.get("lang") ?? "de" },
-  async callWS(message: Record<string, unknown>) {
+function publish() { listeners.forEach((id, listener) => listener(snapshot(id))); }
+const hass: HomeAssistant = {
+  user: { is_admin: true, name: "Demo" }, locale: { language: english ? "en" : "de" },
+  async callWS<T>(message: Record<string, unknown>): Promise<T> {
+    const id = String(message.entry_id ?? "demo");
+    const item = instances[id];
+    let result: unknown;
     switch (message.type) {
-      case "curve_scheduler/list":
-        return [{ entry_id: "demo", title: "Zirkulation", config }];
-      case "curve_scheduler/holidays":
-        return { configured: true, holidays: [...holidays] };
-      case "curve_scheduler/save": {
-        if (message.revision !== revision) {
-          return { ok: false, conflict: true, revision };
-        }
-        const errors = validateSchedule(message.schedule as Schedule, config.min, config.max);
-        if (errors.length) {
-          return { ok: false, conflict: false, errors };
-        }
-        schedule = message.schedule as Schedule;
-        revision += 1;
-        setTimeout(publish, 0);
-        return { ok: true, revision };
+      case "curve_scheduler/list": result = Object.entries(instances).map(([entry_id, entry]) => ({ entry_id, title: entry.title, config: entry.config })); break;
+      case "curve_scheduler/holidays": result = { configured: true, holidays: [...holidays] }; break;
+      case "curve_scheduler/clone": {
+        const newId = `copy_${Object.keys(instances).length}`;
+        instances[newId] = { ...clone(item), title: String(message.name), enabled: false, override: null, revision: 1 };
+        result = { entry_id: newId, title: instances[newId].title, config: instances[newId].config }; break;
       }
-      default:
-        throw new Error(`unknown ${String(message.type)}`);
+      case "curve_scheduler/save": {
+        if (message.revision !== item.revision) result = { ok: false, conflict: true, revision: item.revision };
+        else {
+          const errors = validateSchedule(message.schedule as Schedule, item.config.min, item.config.max, item.config.axis);
+          if (errors.length) result = { ok: false, conflict: false, errors };
+          else { item.schedule = clone(message.schedule as Schedule); item.revision++; result = { ok: true, revision: item.revision }; setTimeout(publish, 0); }
+        }
+        break;
+      }
+      default: throw new Error(`Unknown demo command: ${String(message.type)}`);
     }
+    return result as T;
   },
-  async callService(_domain: string, service: string, data: Record<string, unknown>) {
-    if (service === "set_override") {
-      override = { profile: data.profile as string, until: null };
-    } else if (service === "clear_override") {
-      override = null;
-    } else if (service === "add_exception") {
-      schedule.exceptions.push({
-        id: String(Math.random()),
-        from: data.from as string,
-        to: data.to as string,
-        profile: data.profile as string,
-        note: data.note as string,
-      });
-      revision += 1;
-    }
+  async callService(_domain, service, data = {}) {
+    const item = instances[String(data.config_entry_id ?? "demo")];
+    if (service === "clear_offset") item.offset = 0;
+    else if (service === "set_override") item.override = { profile: String(data.profile), until: null };
+    else if (service === "clear_override") item.override = null;
+    else if (service === "add_exception") { item.schedule.exceptions.push({ from: String(data.from), to: String(data.to), profile: String(data.profile), note: String(data.note ?? "") }); item.revision++; }
     publish();
   },
-  connection: {
-    async subscribeMessage(callback: (data: InstanceData) => void) {
-      listeners.add(callback);
-      callback(snapshot());
-      return async () => {
-        listeners.delete(callback);
-      };
-    },
-  },
+  connection: { async subscribeMessage<T>(callback: (data: T) => void, message: Record<string, unknown>) {
+    const listener = callback as (data: InstanceData) => void;
+    const id = String(message.entry_id);
+    listeners.set(listener, id); listener(snapshot(id));
+    return async () => { listeners.delete(listener); };
+  } },
 };
-
-const card = document.createElement("curve-scheduler-card");
-card.setConfig({
-  type: "custom:curve-scheduler-card",
-  entry_id: "demo",
-  view: (params.get("view") as "compact" | "full") ?? "compact",
-});
-(card as unknown as { hass: unknown }).hass = hass;
-document.getElementById("root")!.appendChild(card);
-(window as unknown as { demoCard: unknown }).demoCard = card;
+if (params.get("surface") === "panel") {
+  document.documentElement.classList.add("panel-demo");
+  const panel = document.createElement("curve-scheduler-panel") as CurveSchedulerPanel; panel.hass = hass;
+  document.getElementById("root")!.append(panel);
+} else {
+  const card = document.createElement("curve-scheduler-card");
+  card.setConfig({ type: "custom:curve-scheduler-card", entry_id: params.get("entry_id") ?? "demo", view: (params.get("view") as "compact" | "full") ?? "compact" });
+  card.hass = hass;
+  document.getElementById("root")!.append(card);
+}

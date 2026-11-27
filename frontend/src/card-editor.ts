@@ -59,6 +59,7 @@ export class CurveSchedulerCardEditor extends LitElement {
     }
     const t = translator(languageOf(this.hass));
     const instances = this._instances ?? [];
+    const editorMode = this._config.editor_mode ?? (this._config.show_edit === false || this._config.view === "graph" ? "hidden" : this._config.view === "full" ? "always" : "button");
     return html`
       <label class="field">
         ${t("config.instance")}
@@ -83,11 +84,12 @@ export class CurveSchedulerCardEditor extends LitElement {
         ${t("config.view")}
         <select
           @change=${(e: Event) =>
-            this.update_({ view: (e.target as HTMLSelectElement).value as "compact" | "full" })}
+            this.update_({ view: (e.target as HTMLSelectElement).value as "compact" | "full" | "graph" })}
         >
-          <option value="compact" ?selected=${this._config.view !== "full"}>
+          <option value="compact" ?selected=${(this._config.view ?? "compact") === "compact"}>
             ${t("config.view.compact")}
           </option>
+          <option value="graph" ?selected=${this._config.view === "graph"}>${t("config.view.graph")}</option>
           <option value="full" ?selected=${this._config.view === "full"}>
             ${t("config.view.full")}
           </option>
@@ -101,6 +103,19 @@ export class CurveSchedulerCardEditor extends LitElement {
           @change=${(e: Event) => this.update_({ title: (e.target as HTMLInputElement).value })}
         />
       </label>
+      <label class="field">${t("config.editor_mode")}
+        <select
+          @change=${(e: Event) => this.update_({ editor_mode: (e.target as HTMLSelectElement).value as "hidden" | "button" | "always" })}>
+          <option value="hidden" ?selected=${editorMode === "hidden"}>${t("config.editor.hidden")}</option>
+          <option value="button" ?selected=${editorMode === "button"}>${t("config.editor.button")}</option>
+          <option value="always" ?selected=${editorMode === "always"}>${t("config.editor.always")}</option>
+        </select>
+      </label>
+      ${(["show_controls", "show_title", "show_summary", "show_reason", "show_input", "show_offset", "show_clear_offset"] as const).map(key => html`<label class="check">
+        <input type="checkbox" .checked=${this._config[key] ?? (key === "show_clear_offset" ? false : this._config.view !== "graph")}
+          @change=${(e: Event) => this.update_({ [key]: (e.target as HTMLInputElement).checked })}>
+        ${t(`config.${key}`)}
+      </label>`)}
       <label class="check">
         <input
           type="checkbox"

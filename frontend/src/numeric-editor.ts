@@ -12,7 +12,9 @@ const labels = {
 };
 
 export class NumericEditor extends LitElement {
-  static properties = { embedded: { type: Boolean }, selected: { state: true }, hass: { attribute: false }, data: { attribute: false }, editable: { type: Boolean }, language: {}, points: { state: true }, editing: { state: true }, message: { state: true }, saving: { state: true } };
+  static properties = { graphOnly: { attribute: false }, offset: { attribute: false }, embedded: { type: Boolean }, selected: { state: true }, hass: { attribute: false }, data: { attribute: false }, editable: { type: Boolean }, language: {}, points: { state: true }, editing: { state: true }, message: { state: true }, saving: { state: true } };
+  declare graphOnly: boolean;
+  declare offset: number;
   declare embedded: boolean;
   declare hass: HomeAssistant;
   declare data: InstanceData;
@@ -26,7 +28,7 @@ export class NumericEditor extends LitElement {
   private revision = 0;
   private base = "";
   constructor() {
-    super(); this.embedded = false; this.editable = false; this.language = "en"; this.points = []; this.editing = false; this.message = ""; this.saving = false;
+    super(); this.graphOnly = false; this.offset = 0; this.embedded = false; this.editable = false; this.language = "en"; this.points = []; this.editing = false; this.message = ""; this.saving = false;
   }
   private beforeUnload = (event: BeforeUnloadEvent) => {
     if (this.dirty) { event.preventDefault(); event.returnValue = ""; }
@@ -105,10 +107,11 @@ export class NumericEditor extends LitElement {
     const { config, state } = this.data;
     const axis = config.axis!;
     return html`
-      <p>${this.text.x}: ${state.input_value ?? "—"} → ${this.text.y}: ${state.value ?? "—"} ${config.unit ?? ""}</p>
-      <p class="muted">${axis.source === "sensor" ? axis.input_entity : axis.source} · ${axis.min}…${axis.max} · ${axis.wrap ? this.text.wrap : this.text.clamp}</p>
+      ${this.graphOnly ? nothing : html`<p>${this.text.x}: ${state.input_value ?? "—"} → ${this.text.y}: ${state.value ?? "—"} ${config.unit ?? ""}</p>
+      <p class="muted">${axis.source === "sensor" ? axis.input_entity : axis.source === "day_of_week" ? (this.language.startsWith("de") ? "Wochentag (1 = Mo, 7 = So; Bruchteile = Tageszeit)" : "Day of week (1 = Mon, 7 = Sun; fractions = time of day)") : axis.source} · ${axis.min}…${axis.max} · ${axis.wrap ? this.text.wrap : this.text.clamp}</p>`}
       ${state.input_available === false ? html`<p role="status">${this.text.unavailable}</p>` : nothing}
       <curve-scheduler-curve
+        .offset=${this.offset}
         .axis=${axis} .numericPoints=${this.valid ? this.points : []}
         .mode=${config.interpolation} .min=${config.min} .max=${config.max} .step=${config.step}
         .xLabelStep=${config.x_label_step ?? 0} .yLabelStep=${config.y_label_step ?? 0}
@@ -134,7 +137,7 @@ export class NumericEditor extends LitElement {
       ` : nothing}
       <p role="status">${this.message}</p>`;
   }
-  static styles = [sharedStyles, css`
+  static styles = [sharedStyles, css` p { margin: 2px 0; }
     :host { display:block; }
     input { width:100%; box-sizing:border-box; }
     .row { display:flex; justify-content:space-between; gap:8px; align-items:end; margin:8px 0; } label { min-width:0; }

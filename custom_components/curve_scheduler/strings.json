@@ -31,7 +31,8 @@
           "x_step": "X point resolution",
           "x_wrap": "Wrap input",
           "x_label_step": "X-axis label interval",
-          "y_label_step": "Y-axis label interval"
+          "y_label_step": "Y-axis label interval",
+          "watch_target": "Watch target changes as offset"
         },
         "data_description": {
           "interpolation": "How the value changes between two points.",
@@ -45,7 +46,65 @@
           "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
           "x_step": "Point movement resolution; the sampled input is not rounded.",
           "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
-          "y_label_step": "0 = automatic; otherwise the spacing in output units."
+          "y_label_step": "0 = automatic; otherwise the spacing in output units.",
+          "watch_target": "Keep external target adjustments as a persistent additive offset."
+        },
+        "sections": {
+          "input": {
+            "name": "Input",
+            "data": {
+              "input_entity": "Input entity",
+              "x_min": "X minimum",
+              "x_max": "X maximum",
+              "x_step": "X point resolution",
+              "x_wrap": "Wrap input"
+            },
+            "data_description": {
+              "x_step": "Point movement resolution; the sampled input is not rounded.",
+              "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits."
+            }
+          },
+          "target": {
+            "name": "Target and watching",
+            "data": {
+              "watch_target": "Watch target changes as offset",
+              "output_tick_seconds": "Output tick (seconds)",
+              "write_threshold": "Write threshold"
+            },
+            "data_description": {
+              "watch_target": "Keep external target adjustments as a persistent additive offset.",
+              "output_tick_seconds": "Sample input and update the output every 1–86400 seconds; a target is optional.",
+              "write_threshold": "Only write when the value changed by at least this amount (0 = on every change)."
+            }
+          },
+          "output": {
+            "name": "Output calculation",
+            "data": {
+              "interpolation": "Transition between points",
+              "min_value": "Minimum",
+              "max_value": "Maximum",
+              "step": "Rounding step",
+              "unit": "Unit"
+            },
+            "data_description": {
+              "interpolation": "How the value changes between two points.",
+              "min_value": "Lowest allowed value. Also the bottom of the chart.",
+              "max_value": "Highest allowed value. Also the top of the chart.",
+              "step": "The value is rounded to this step before writing, e.g. 0.5.",
+              "unit": "Shown in the card, e.g. °C."
+            }
+          },
+          "graph": {
+            "name": "Graph labels",
+            "data": {
+              "x_label_step": "X-axis label interval",
+              "y_label_step": "Y-axis label interval"
+            },
+            "data_description": {
+              "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
+              "y_label_step": "0 = automatic; otherwise the spacing in output units."
+            }
+          }
         }
       }
     },
@@ -94,7 +153,8 @@
           "x_step": "X point resolution",
           "x_wrap": "Wrap input",
           "x_label_step": "X-axis label interval",
-          "y_label_step": "Y-axis label interval"
+          "y_label_step": "Y-axis label interval",
+          "watch_target": "Watch target changes as offset"
         },
         "data_description": {
           "target_entity": "Optional. Without a target the calculated output is available as a sensor.",
@@ -109,7 +169,67 @@
           "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
           "x_step": "Point movement resolution; the sampled input is not rounded.",
           "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
-          "y_label_step": "0 = automatic; otherwise the spacing in output units."
+          "y_label_step": "0 = automatic; otherwise the spacing in output units.",
+          "watch_target": "Keep external target adjustments as a persistent additive offset."
+        },
+        "sections": {
+          "input": {
+            "name": "Input",
+            "data": {
+              "input_entity": "Input entity",
+              "x_min": "X minimum",
+              "x_max": "X maximum",
+              "x_step": "X point resolution",
+              "x_wrap": "Wrap input"
+            },
+            "data_description": {
+              "x_step": "Point movement resolution; the sampled input is not rounded.",
+              "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits."
+            }
+          },
+          "target": {
+            "name": "Target and watching",
+            "data": {
+              "target_entity": "Target",
+              "watch_target": "Watch target changes as offset",
+              "output_tick_seconds": "Output tick (seconds)",
+              "write_threshold": "Write threshold"
+            },
+            "data_description": {
+              "target_entity": "Optional. Without a target the calculated output is available as a sensor.",
+              "watch_target": "Keep external target adjustments as a persistent additive offset.",
+              "output_tick_seconds": "Sample input and update the output every 1–86400 seconds; a target is optional.",
+              "write_threshold": "Only write when the value changed by at least this amount (0 = on every change)."
+            }
+          },
+          "output": {
+            "name": "Output calculation",
+            "data": {
+              "interpolation": "Transition between points",
+              "min_value": "Minimum",
+              "max_value": "Maximum",
+              "step": "Rounding step",
+              "unit": "Unit"
+            },
+            "data_description": {
+              "interpolation": "How the value changes between two points.",
+              "min_value": "Lowest allowed value. Also the bottom of the chart.",
+              "max_value": "Highest allowed value. Also the top of the chart.",
+              "step": "The value is rounded to this step before writing, e.g. 0.5.",
+              "unit": "Shown in the card, e.g. °C."
+            }
+          },
+          "graph": {
+            "name": "Graph labels",
+            "data": {
+              "x_label_step": "X-axis label interval",
+              "y_label_step": "Y-axis label interval"
+            },
+            "data_description": {
+              "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
+              "y_label_step": "0 = automatic; otherwise the spacing in output units."
+            }
+          }
         }
       }
     },
@@ -140,14 +260,15 @@
       "options": {
         "time_of_day": "Time of day",
         "month_of_year": "Month of year",
-        "sensor": "Sensor value"
+        "sensor": "Sensor value",
+        "day_of_week": "Day of week"
       }
     }
   },
   "entity": {
     "sensor": {
       "setpoint": {
-        "name": "Setpoint",
+        "name": "Raw curve value",
         "state_attributes": {
           "profile": {
             "name": "Profile"
@@ -162,7 +283,8 @@
               "holiday": "Holiday",
               "exception": "Exception",
               "override": "Manual",
-              "input": "Input curve"
+              "input": "Input curve",
+              "fallback": "No activation matched — configured fallback plan"
             }
           },
           "next_point_time": {
@@ -201,6 +323,12 @@
             }
           }
         }
+      },
+      "curve_value": {
+        "name": "Curve value"
+      },
+      "offset": {
+        "name": "Offset"
       }
     },
     "switch": {
@@ -321,6 +449,10 @@
           "description": "The time profile instance."
         }
       }
+    },
+    "clear_offset": {
+      "name": "Clear offset",
+      "description": "Reset the persistent curve offset to zero."
     }
   }
 }

@@ -306,7 +306,7 @@ describe("activation ordering and numeric plans", () => {
     editor.undo();
     await settle();
     expect(editor._draft.activations![6].source).toBe("calendar.holidays");
-    expect(editor.shadowRoot!.textContent).toContain("First matching activation wins");
+    expect(editor.shadowRoot!.textContent).toContain("Entries are alternatives");
   });
 
   it("edits a numeric plan in the shared draft with undo and a single schedule save", async () => {
@@ -407,5 +407,172 @@ it("selects several weekdays in one activation and saves them together", async (
   expect(editor.shadowRoot!.querySelector(".weekday-select summary")!.textContent).toContain("Dienstag");
   callWS.mockResolvedValue({ ok: true, revision: 4 });
   await editor.save();
-  expect(callWS.mock.calls[0][0].schedule.activations[0].days).toEqual(["mon", "tue"]);
+  expect(callWS.mock.calls.find(([message]) => message.type === "curve_scheduler/save")![0].schedule.activations[0].days).toEqual(["mon", "tue"]);
+});
+
+it("edits native state conditions with numeric attribute values", async () => {
+  editor.language = "en";
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  const type = editor.shadowRoot!.querySelector<HTMLSelectElement>(".activation select")!;
+  type.value = "condition";
+  type.dispatchEvent(new Event("change"));
+  await settle();
+  const activation = editor.shadowRoot!.querySelector(".activation")!;
+  activation.querySelector("ha-entity-picker")!.dispatchEvent(new CustomEvent("value-changed", { detail: { value: "climate.room" } }));
+  await settle();
+  const attribute = activation.querySelectorAll<HTMLInputElement>("input")[0];
+  attribute.value = "temperature";
+  attribute.dispatchEvent(new Event("change"));
+  await settle();
+  const valueType = [...activation.querySelectorAll("select")].find(select => [...select.options].some(option => option.value === "number"))!;
+  valueType.value = "number";
+  valueType.dispatchEvent(new Event("change"));
+  await settle();
+  const value = activation.querySelectorAll<HTMLInputElement>("input")[1];
+  value.value = "21";
+  value.dispatchEvent(new Event("change"));
+  await settle();
+  expect(editor._draft.activations![0].condition).toEqual({ condition: "state", entity_id: "climate.room", attribute: "temperature", state: 21 });
+});
+
+it("toggles offset application independently for a plan", async () => {
+  const toggle = editor.shadowRoot!.querySelector<HTMLInputElement>(".apply-offset")!;
+  expect(toggle.checked).toBe(true);
+  toggle.checked = false;
+  toggle.dispatchEvent(new Event("change"));
+  await settle();
+  expect(editor._draft.profiles.workday.apply_offset).toBe(false);
+  toggle.checked = true;
+  toggle.dispatchEvent(new Event("change"));
+  await settle();
+  expect(editor._draft.profiles.workday.apply_offset).toBe(true);
+});
+
+it("clears the persisted offset through the action", async () => {
+  editor.language = "en";
+  editor.data = { ...editor.data, state: { ...editor.data.state, offset: 3, curve_value: 48, value: 45 } };
+  await settle();
+  const clear = [...editor.shadowRoot!.querySelectorAll("button")].find(b => b.textContent?.trim() === "Clear offset")!;
+  expect(clear.disabled).toBe(false);
+  clear.click();
+  await settle();
+  expect(editor.hass!.callService).toHaveBeenCalledWith("curve_scheduler", "clear_offset", { config_entry_id: editor.data.entry_id });
+  expect(editor.shadowRoot!.textContent).toContain("Curve value: 48");
+});
+
+it("wraps an entity condition in a native logical group and adds a weekday rule", async () => {
+  editor.language = "en";
+  editor._draft.activations = [{ type: "condition", profile: "workday", condition: { condition: "state", entity_id: "sensor.mode", state: "home" } }];
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  const selectType = async (value: string, last = false) => {
+    const selects = [...editor.shadowRoot!.querySelectorAll<HTMLSelectElement>(".activation select")].filter(s => [...s.options].some(o => o.value === "and"));
+    const select = last ? selects.at(-1)! : selects[0];
+    select.value = value;
+    select.dispatchEvent(new Event("change"));
+    await settle();
+  };
+  await selectType("and");
+  const add = [...editor.shadowRoot!.querySelectorAll("button")].find(b => b.textContent?.trim() === "Add condition")!;
+  add.click();
+  await settle();
+  await selectType("curve_scheduler_weekday", true);
+  const group = editor._draft.activations![0].condition!;
+  expect(group.condition).toBe("and");
+  expect(group.conditions).toEqual([
+    { condition: "state", entity_id: "sensor.mode", state: "home" },
+    { condition: "curve_scheduler_weekday", days: ["mon"] },
+  ]);
+});
+
+it("updates the calendar and legend immediately after deleting the fallback plan and undoing", async () => {
+  editor.language = "en";
+  editor._draft = { ...editor._draft, activations: [], exceptions: [], profiles: {
+    obsolete: { name: "Obsolete", color: "#123456", points: [{ t: "00:00", v: 40 }] },
+    ...editor._draft.profiles,
+  } };
+  editor._profileId = "obsolete";
+  await settle();
+  vi.spyOn(window, "confirm").mockReturnValue(true);
+  [...editor.shadowRoot!.querySelectorAll("button")].find(b => b.textContent?.trim() === "Delete plan")!.click();
+  await settle();
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  expect(editor.shadowRoot!.querySelector(".legend")!.textContent).not.toContain("Obsolete");
+  expect(editor.shadowRoot!.querySelector(".cell[title]")!.getAttribute("title")).toContain(editor._draft.profiles.workday.name);
+  editor.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.click();
+  await settle();
+  expect(editor.shadowRoot!.querySelector(".legend")!.textContent).toContain("Obsolete");
+  expect(editor.shadowRoot!.querySelector(".cell[title]")!.getAttribute("title")).toContain("Obsolete");
+});
+
+it("edits native numeric bounds and keeps children when changing a group's operator", async () => {
+  editor.language = "en";
+  editor._draft.activations = [{ type: "condition", profile: "workday", condition: {
+    condition: "and", conditions: [{ condition: "numeric_state", entity_id: "sensor.value", above: 4, below: 6 }],
+  } }];
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  const bound = [...editor.shadowRoot!.querySelectorAll<HTMLLabelElement>("label")].find(label => label.textContent?.includes("Above (exclusive)"))!.querySelector("input")!;
+  bound.value = "3"; bound.dispatchEvent(new Event("change"));
+  await settle();
+  const operator = [...editor.shadowRoot!.querySelectorAll("select")].find(select => select.value === "and")!;
+  operator.value = "or"; operator.dispatchEvent(new Event("change"));
+  await settle();
+  expect(editor._draft.activations![0].condition).toEqual({ condition: "or", conditions: [
+    { condition: "numeric_state", entity_id: "sensor.value", above: 3, below: 6 },
+  ] });
+});
+
+it("ignores stale calendar responses after deleting a plan from the draft", async () => {
+  const pending: ((value: unknown) => void)[] = [];
+  callWS.mockImplementation((message: { type: string }) => message.type === "curve_scheduler/calendar"
+    ? new Promise(resolve => pending.push(resolve)) : Promise.resolve(undefined));
+  editor._draft = { ...editor._draft, activations: [{ type: "condition", profile: "day_off", condition: { condition: "state", entity_id: "sensor.value", state: "5" } }], exceptions: [] };
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  expect(pending).toHaveLength(1);
+  const profiles = { ...editor._draft.profiles }; delete profiles.workday;
+  editor._draft = { ...editor._draft, profiles };
+  await settle();
+  expect(pending).toHaveLength(2);
+  pending[1]({ ok: true, days: [{ date: editor._month, profile_id: "day_off", reason: "condition" }] });
+  await new Promise(resolve => setTimeout(resolve, 0)); await settle();
+  pending[0]({ ok: true, days: [{ date: editor._month, profile_id: "workday", reason: "fallback" }] });
+  await new Promise(resolve => setTimeout(resolve, 0)); await settle();
+  expect(editor.shadowRoot!.querySelector(".cell[title]")!.getAttribute("title")).toContain(profiles.day_off.name);
+});
+
+it("selects a single curve fallback plan and protects it from deletion", async () => {
+  editor.language = "en";
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  const fallback = editor.shadowRoot!.querySelector<HTMLSelectElement>(".fallback-plan")!;
+  fallback.value = "day_off";
+  fallback.dispatchEvent(new Event("change"));
+  await settle();
+  expect(editor._draft.fallback_profile).toBe("day_off");
+  expect(editor.shadowRoot!.querySelector(".fallback-plan")).not.toBeNull();
+});
+
+it("edits month checkboxes and a native overnight time condition", async () => {
+  editor.language = "en";
+  editor._draft.activations = [{ type: "condition", profile: "workday", condition: { condition: "curve_scheduler_month", months: [1] } }];
+  editor.shadowRoot!.querySelectorAll<HTMLButtonElement>(".tab")[1].click();
+  await settle();
+  const months = editor.shadowRoot!.querySelectorAll<HTMLInputElement>('.condition-fields input[type="checkbox"]');
+  expect(months).toHaveLength(12);
+  months[6].checked = true; months[6].dispatchEvent(new Event("change"));
+  await settle();
+  expect(editor._draft.activations![0].condition!.months).toEqual([1, 7]);
+  const type = editor.shadowRoot!.querySelector<HTMLSelectElement>('[aria-label="Condition type"]')!;
+  type.value = "time"; type.dispatchEvent(new Event("change"));
+  await settle();
+  const times = editor.shadowRoot!.querySelectorAll<HTMLInputElement>('input[type="time"]');
+  times[0].value = "22:00:00"; times[0].dispatchEvent(new Event("change"));
+  await settle();
+  times[1].value = "06:00:00"; times[1].dispatchEvent(new Event("change"));
+  await settle();
+  expect(editor._draft.activations![0].condition).toEqual({ condition: "time", after: "22:00", before: "06:00" });
 });

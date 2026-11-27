@@ -13,7 +13,7 @@ from custom_components.curve_scheduler.const import CONF_INITIAL_SCHEDULE, CONF_
 from custom_components.curve_scheduler.store import create_store
 
 from .conftest import make_entry, setup_entry
-from .test_config_flow import SETTINGS
+from .test_config_flow import SETTINGS, group_settings
 
 
 @pytest.mark.parametrize("axis", ["time_of_day", "month_of_year", "sensor"])
@@ -115,10 +115,10 @@ async def test_clone_can_keep_target_in_options_but_new_assignments_cannot_reuse
     clone = result["result"]
     flow = await hass.config_entries.options.async_init(clone.entry_id)
     flow = await hass.config_entries.options.async_configure(
-        flow["flow_id"], {"axis_source": "time_of_day"}
+        flow["flow_id"], group_settings({"axis_source": "time_of_day"})
     )
     result = await hass.config_entries.options.async_configure(
-        flow["flow_id"], {**SETTINGS, CONF_TARGET: target}
+        flow["flow_id"], group_settings({**SETTINGS, CONF_TARGET: target})
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
@@ -126,7 +126,43 @@ async def test_clone_can_keep_target_in_options_but_new_assignments_cannot_reuse
     await hass.config_entries.async_remove(source.entry_id)
     flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
     result = await hass.config_entries.flow.async_configure(
-        flow["flow_id"], {"name": "Duplicate target", CONF_TARGET: target}
+        flow["flow_id"], group_settings({"name": "Duplicate target", CONF_TARGET: target})
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
+
+
+async def test_clone_preserves_conditions_and_plan_offset_flags(hass: HomeAssistant) -> None:
+    from .test_axis import numeric_entry
+
+    source = await numeric_entry(hass)
+    runtime = source.runtime_data
+    schedule = runtime.schedule_dict()
+    schedule["profiles"]["day_off"]["apply_offset"] = False
+    schedule["activations"] = [
+        {
+            "type": "condition",
+            "profile": "day_off",
+            "condition": {
+                "condition": "state",
+                "entity_id": "sensor.mode",
+                "state": "home",
+            },
+        }
+    ]
+    await runtime.async_save_schedule(schedule, runtime.revision)
+    runtime.data["offset"] = 3
+    await runtime._async_persist()
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": "clone"},
+        data={"entry_id": source.entry_id, "name": "Clone conditions"},
+    )
+    await hass.async_block_till_done()
+    cloned = result["result"].runtime_data
+    assert cloned.data["activations"] == schedule["activations"]
+    assert cloned.data["profiles"]["day_off"]["apply_offset"] is False
+    assert cloned.offset == 3
+    assert not cloned.enabled
+    await cloned.async_clear_offset()
+    assert runtime.offset == 3

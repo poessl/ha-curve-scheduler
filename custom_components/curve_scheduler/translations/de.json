@@ -31,7 +31,8 @@
           "x_step": "X-Schrittweite",
           "x_wrap": "X umlaufend",
           "x_label_step": "X-Beschriftungsabstand",
-          "y_label_step": "Y-Beschriftungsabstand"
+          "y_label_step": "Y-Beschriftungsabstand",
+          "watch_target": "Zieländerungen als Versatz übernehmen"
         },
         "data_description": {
           "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
@@ -45,7 +46,65 @@
           "x_wrap": "Obergrenze ist beim Umlauf exklusiv. Sonst werden Werte an den Grenzen begrenzt.",
           "x_step": "Schrittweite beim Verschieben von Punkten; der Eingang wird nicht gerundet.",
           "x_label_step": "0 = automatisch. Tageszeit: Minuten; sonst X-Einheiten. Unabhängig vom Einrasten der Punkte.",
-          "y_label_step": "0 = automatisch; sonst Abstand in Ausgangseinheiten."
+          "y_label_step": "0 = automatisch; sonst Abstand in Ausgangseinheiten.",
+          "watch_target": "Externe Sollwertänderungen als dauerhaften Versatz übernehmen."
+        },
+        "sections": {
+          "input": {
+            "name": "Eingang",
+            "data": {
+              "input_entity": "Eingangsentität",
+              "x_min": "X-Minimum",
+              "x_max": "X-Maximum",
+              "x_step": "X-Schrittweite",
+              "x_wrap": "X umlaufend"
+            },
+            "data_description": {
+              "x_step": "Schrittweite beim Verschieben von Punkten; der Eingang wird nicht gerundet.",
+              "x_wrap": "Obergrenze ist beim Umlauf exklusiv. Sonst werden Werte an den Grenzen begrenzt."
+            }
+          },
+          "target": {
+            "name": "Ziel und Überwachung",
+            "data": {
+              "watch_target": "Zieländerungen als Versatz übernehmen",
+              "output_tick_seconds": "Ausgangsintervall (Sekunden)",
+              "write_threshold": "Schreib-Schwelle"
+            },
+            "data_description": {
+              "watch_target": "Externe Sollwertänderungen als dauerhaften Versatz übernehmen.",
+              "output_tick_seconds": "Eingang lesen und Ausgang alle 1–86400 Sekunden aktualisieren; ein Ziel ist optional.",
+              "write_threshold": "Nur schreiben, wenn sich der Wert um mindestens diesen Betrag geändert hat (0 = bei jeder Änderung)."
+            }
+          },
+          "output": {
+            "name": "Ausgangsberechnung",
+            "data": {
+              "interpolation": "Übergang zwischen Punkten",
+              "min_value": "Minimum",
+              "max_value": "Maximum",
+              "step": "Schrittweite",
+              "unit": "Einheit"
+            },
+            "data_description": {
+              "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
+              "min_value": "Kleinster erlaubter Wert. Gleichzeitig der untere Rand des Diagramms.",
+              "max_value": "Größter erlaubter Wert. Gleichzeitig der obere Rand des Diagramms.",
+              "step": "Vor dem Schreiben wird auf diese Schrittweite gerundet, z. B. 0,5.",
+              "unit": "Wird in der Karte angezeigt, z. B. °C."
+            }
+          },
+          "graph": {
+            "name": "Diagrammbeschriftung",
+            "data": {
+              "x_label_step": "X-Beschriftungsabstand",
+              "y_label_step": "Y-Beschriftungsabstand"
+            },
+            "data_description": {
+              "x_label_step": "0 = automatisch. Tageszeit: Minuten; sonst X-Einheiten. Unabhängig vom Einrasten der Punkte.",
+              "y_label_step": "0 = automatisch; sonst Abstand in Ausgangseinheiten."
+            }
+          }
         }
       }
     },
@@ -94,7 +153,8 @@
           "x_step": "X-Schrittweite",
           "x_wrap": "X umlaufend",
           "x_label_step": "X-Beschriftungsabstand",
-          "y_label_step": "Y-Beschriftungsabstand"
+          "y_label_step": "Y-Beschriftungsabstand",
+          "watch_target": "Zieländerungen als Versatz übernehmen"
         },
         "data_description": {
           "target_entity": "Optional. Ohne Ziel ist der berechnete Ausgang als Sensor verfügbar.",
@@ -109,7 +169,67 @@
           "x_wrap": "Obergrenze ist beim Umlauf exklusiv. Sonst werden Werte an den Grenzen begrenzt.",
           "x_step": "Schrittweite beim Verschieben von Punkten; der Eingang wird nicht gerundet.",
           "x_label_step": "0 = automatisch. Tageszeit: Minuten; sonst X-Einheiten. Unabhängig vom Einrasten der Punkte.",
-          "y_label_step": "0 = automatisch; sonst Abstand in Ausgangseinheiten."
+          "y_label_step": "0 = automatisch; sonst Abstand in Ausgangseinheiten.",
+          "watch_target": "Externe Sollwertänderungen als dauerhaften Versatz übernehmen."
+        },
+        "sections": {
+          "input": {
+            "name": "Eingang",
+            "data": {
+              "input_entity": "Eingangsentität",
+              "x_min": "X-Minimum",
+              "x_max": "X-Maximum",
+              "x_step": "X-Schrittweite",
+              "x_wrap": "X umlaufend"
+            },
+            "data_description": {
+              "x_step": "Schrittweite beim Verschieben von Punkten; der Eingang wird nicht gerundet.",
+              "x_wrap": "Obergrenze ist beim Umlauf exklusiv. Sonst werden Werte an den Grenzen begrenzt."
+            }
+          },
+          "target": {
+            "name": "Ziel und Überwachung",
+            "data": {
+              "target_entity": "Ziel",
+              "watch_target": "Zieländerungen als Versatz übernehmen",
+              "output_tick_seconds": "Ausgangsintervall (Sekunden)",
+              "write_threshold": "Schreib-Schwelle"
+            },
+            "data_description": {
+              "target_entity": "Optional. Ohne Ziel ist der berechnete Ausgang als Sensor verfügbar.",
+              "watch_target": "Externe Sollwertänderungen als dauerhaften Versatz übernehmen.",
+              "output_tick_seconds": "Eingang lesen und Ausgang alle 1–86400 Sekunden aktualisieren; ein Ziel ist optional.",
+              "write_threshold": "Nur schreiben, wenn sich der Wert um mindestens diesen Betrag geändert hat (0 = bei jeder Änderung)."
+            }
+          },
+          "output": {
+            "name": "Ausgangsberechnung",
+            "data": {
+              "interpolation": "Übergang zwischen Punkten",
+              "min_value": "Minimum",
+              "max_value": "Maximum",
+              "step": "Schrittweite",
+              "unit": "Einheit"
+            },
+            "data_description": {
+              "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
+              "min_value": "Kleinster erlaubter Wert. Gleichzeitig der untere Rand des Diagramms.",
+              "max_value": "Größter erlaubter Wert. Gleichzeitig der obere Rand des Diagramms.",
+              "step": "Vor dem Schreiben wird auf diese Schrittweite gerundet, z. B. 0,5.",
+              "unit": "Wird in der Karte angezeigt, z. B. °C."
+            }
+          },
+          "graph": {
+            "name": "Diagrammbeschriftung",
+            "data": {
+              "x_label_step": "X-Beschriftungsabstand",
+              "y_label_step": "Y-Beschriftungsabstand"
+            },
+            "data_description": {
+              "x_label_step": "0 = automatisch. Tageszeit: Minuten; sonst X-Einheiten. Unabhängig vom Einrasten der Punkte.",
+              "y_label_step": "0 = automatisch; sonst Abstand in Ausgangseinheiten."
+            }
+          }
         }
       }
     },
@@ -140,14 +260,15 @@
       "options": {
         "time_of_day": "Tageszeit",
         "month_of_year": "Monat im Jahr",
-        "sensor": "Sensorwert"
+        "sensor": "Sensorwert",
+        "day_of_week": "Wochentag"
       }
     }
   },
   "entity": {
     "sensor": {
       "setpoint": {
-        "name": "Sollwert",
+        "name": "Unveränderter Kurvenwert",
         "state_attributes": {
           "profile": {
             "name": "Profil"
@@ -162,7 +283,8 @@
               "holiday": "Feiertag",
               "exception": "Ausnahme",
               "override": "Manuell",
-              "input": "Eingangskurve"
+              "input": "Eingangskurve",
+              "fallback": "Keine Aktivierung passt — Rückfallplan"
             }
           },
           "next_point_time": {
@@ -201,6 +323,12 @@
             }
           }
         }
+      },
+      "curve_value": {
+        "name": "Kurvenwert"
+      },
+      "offset": {
+        "name": "Versatz"
       }
     },
     "switch": {
@@ -321,6 +449,10 @@
           "description": "Die Zeitprofil-Instanz."
         }
       }
+    },
+    "clear_offset": {
+      "name": "Versatz zurücksetzen",
+      "description": "Setzt den Versatz auf null zurück."
     }
   }
 }

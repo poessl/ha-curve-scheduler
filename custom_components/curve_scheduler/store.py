@@ -40,9 +40,12 @@ def migrate_data(data: dict[str, Any]) -> dict[str, Any]:
             and "day" in activation
         ):
             activation["days"] = [activation.pop("day")]
+    if data.get("profiles"):
+        data.setdefault("fallback_profile", next(iter(data["profiles"])))
     data.setdefault("exceptions", [])
     data.setdefault("auto_cleanup", False)
     data.setdefault("enabled", True)
+    data.setdefault("offset", 0.0)
     data.setdefault("override", None)
     data.setdefault("revision", 1)
     return data

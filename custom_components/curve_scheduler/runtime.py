@@ -2,17 +2,27 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections import deque
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 import copy
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from functools import partial
 import logging
 import math
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_ENTITY_ID, ATTR_TEMPERATURE, STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.core import (
+    CALLBACK_TYPE,
+    Context,
+    Event,
+    EventStateChangedData,
+    HomeAssistant,
+    callback,
+)
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
     async_track_point_in_time,
@@ -24,6 +34,7 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .axis import axis_config, default_curve, evaluate_curve, input_value
+from .conditions import ScheduleCondition, async_compile_schedule_condition
 from .const import (
     CONF_HOLIDAY_SOURCE,
     CONF_INITIAL_SCHEDULE,
@@ -117,8 +128,11 @@ class CurveSchedulerRuntime:
         self.holidays = HolidayProvider(hass, self.holiday_source)
         self.activation_holidays: dict[str, HolidayProvider] = {}
         self._activation_unsub: CALLBACK_TYPE | None = None
+        self._conditions: dict[int, ScheduleCondition] = {}
+        self._condition_entities: set[str] = set()
         self.current: ComputedValue | None = None
         self.last_written: float | None = None
+        self._write_contexts: deque[str] = deque(maxlen=64)
         self._listeners: list[Callable[[], None]] = []
         self._unsubs: list[CALLBACK_TYPE] = []
         self._override_unsub: CALLBACK_TYPE | None = None
@@ -203,6 +217,7 @@ class CurveSchedulerRuntime:
         """Return the configuration relevant for the card."""
         return {
             "target": self.target,
+            "watch_target": bool(self.options.get("watch_target", False)),
             "interval": self.interval,
             "output_tick_seconds": self.tick_seconds,
             "axis": self.axis,
@@ -268,6 +283,7 @@ class CurveSchedulerRuntime:
                     if key != CONF_INITIAL_SCHEDULE
                 },
             )
+        await self._async_prepare_conditions(self.data)
         self._sync_activation_sources()
         issues = validate_schedule(self.data, -math.inf, math.inf, self.axis)
         if issues:
@@ -277,14 +293,56 @@ class CurveSchedulerRuntime:
                 ", ".join(f"{i.path}: {i.code}" for i in issues),
             )
 
+    async def _async_prepare_conditions(self, data: dict[str, Any]) -> None:
+        compiled: dict[int, ScheduleCondition] = {}
+        entities: set[str] = set()
+        try:
+            for index, activation in enumerate(data.get("activations", [])):
+                if activation["type"] == "condition":
+                    checker, dependencies = await async_compile_schedule_condition(
+                        self.hass, activation["condition"]
+                    )
+                    compiled[index] = checker
+                    entities.update(dependencies)
+        except Exception as err:
+            for checker in compiled.values():
+                checker.async_unload()
+            raise ScheduleValidationError(
+                [
+                    ValidationIssue(
+                        "invalid_condition", f"activations.{index}.condition", {"detail": str(err)}
+                    )
+                ]
+            ) from err
+        for checker in self._conditions.values():
+            checker.async_unload()
+        self._conditions = compiled
+        self._condition_entities = entities
+
+    def _matches_condition(self, index: int, day: date | None = None) -> bool:
+        checker = self._conditions.get(index)
+        try:
+            return checker is not None and checker.matches(
+                day or dt_util.now().date(), self._is_holiday
+            )
+        except HomeAssistantError:
+            return False
+
     def _sync_activation_sources(self) -> None:
         sources = {a["source"] for a in self.data.get("activations", []) if a["type"] == "holiday"}
+        sources.update(
+            rule["source"]
+            for compiled in self._conditions.values()
+            for rule in compiled.date_rules.values()
+            if rule["condition"] == "curve_scheduler_holiday"
+        )
         self.activation_holidays = {
             source: self.activation_holidays.get(source) or HolidayProvider(self.hass, source)
             for source in sources
         }
         if self._activation_unsub:
             self._activation_unsub()
+        sources |= self._condition_entities
         self._activation_unsub = (
             async_track_state_change_event(
                 self.hass, list(sources), self._async_holiday_source_changed
@@ -328,6 +386,9 @@ class CurveSchedulerRuntime:
     async def async_stop(self) -> None:
         """Remove listeners and timers."""
         self._stopped = True
+        for checker in self._conditions.values():
+            checker.async_unload()
+        self._conditions.clear()
         if self._activation_unsub:
             self._activation_unsub()
             self._activation_unsub = None
@@ -370,6 +431,42 @@ class CurveSchedulerRuntime:
         new = event.data["new_state"]
         was_available = old is not None and old.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
         is_available = new is not None and new.state not in (STATE_UNAVAILABLE, STATE_UNKNOWN)
+        if (
+            old is not None
+            and new is not None
+            and was_available
+            and is_available
+            and self.enabled
+            and self.options.get("watch_target", False)
+            and new.context.id not in self._write_contexts
+            and new.context.parent_id not in self._write_contexts
+        ):
+            attribute = (
+                ATTR_TEMPERATURE
+                if self.target.split(".", 1)[0] in ("climate", "water_heater")
+                else None
+            )
+            before = old.attributes.get(attribute) if attribute else old.state
+            after = new.attributes.get(attribute) if attribute else new.state
+            try:
+                value = float(after) if after is not None else None
+            except TypeError, ValueError:
+                value = None
+            if (
+                before != after
+                and value is not None
+                and math.isfinite(value)
+                and (
+                    self.last_written is None
+                    or not math.isclose(value, self.last_written, abs_tol=1e-6)
+                )
+            ):
+                base = self.compute_at(dt_util.now()).value
+                if base is not None:
+                    self.data["offset"] = value - base
+                    self.hass.async_create_task(self._async_persist())
+                    self._compute(dt_util.now())
+                    self._notify()
         if is_available and not was_available:
             if self._unavailable_warned:
                 _LOGGER.info("Target %s is available again", self.target)
@@ -427,7 +524,9 @@ class CurveSchedulerRuntime:
         override = self.active_override(at)
         if override is not None:
             return DayProfile(override, REASON_OVERRIDE)
-        return resolve_day(self.data, day, self._is_holiday)
+        return resolve_day(
+            self.data, day, self._is_holiday, lambda index: self._matches_condition(index, day)
+        )
 
     def timeline_profiles(self, at: datetime) -> list[tuple[date, DayProfile]]:
         """Return the profiles of the five timeline days around ``at``."""
@@ -481,6 +580,67 @@ class CurveSchedulerRuntime:
         self.current = self.compute_at(now)
         return self.current
 
+    async def async_preview(
+        self, day: date, schedule: dict[str, Any] | None, step_minutes: int
+    ) -> list[list[float]]:
+        """Evaluate unsaved conditions without replacing live runtime checkers."""
+        async with self._preview_context(schedule, day, day) as preview:
+            return preview.preview(day, None, step_minutes)
+
+    async def async_calendar(
+        self, start: date, end: date, schedule: dict[str, Any] | None
+    ) -> list[dict[str, str]]:
+        """Resolve automatic plans with the same evaluator as live scheduling."""
+        async with self._preview_context(schedule, start, end) as preview:
+            result = []
+            for offset in range((end - start).days + 1):
+                day = start + timedelta(days=offset)
+                selected = resolve_day(
+                    preview.data,
+                    day,
+                    preview._is_holiday,
+                    partial(preview._matches_condition, day=day),
+                )
+                result.append(
+                    {
+                        "date": day.isoformat(),
+                        "profile_id": selected.profile_id,
+                        "reason": selected.reason,
+                    }
+                )
+            return result
+
+    @asynccontextmanager
+    async def _preview_context(
+        self, schedule: dict[str, Any] | None, start: date, end: date
+    ) -> AsyncIterator[CurveSchedulerRuntime]:
+        """Prepare isolated conditions and date sources for both preview views."""
+        preview = copy.copy(self)
+        preview.data = {**self.data, **(schedule or {})}
+        preview._conditions = {}
+        preview._condition_entities = set()
+        try:
+            await preview._async_prepare_conditions(preview.data)
+            sources = {
+                a["source"] for a in preview.data.get("activations", []) if a["type"] == "holiday"
+            }
+            sources.update(
+                rule["source"]
+                for compiled in preview._conditions.values()
+                for rule in compiled.date_rules.values()
+                if rule["condition"] == "curve_scheduler_holiday"
+            )
+            preview.activation_holidays = {
+                source: HolidayProvider(self.hass, source) for source in sources
+            }
+            for provider in preview.activation_holidays.values():
+                await provider.async_ensure(start - timedelta(days=2), end + timedelta(days=2))
+            await preview.holidays.async_ensure(start - timedelta(days=2), end + timedelta(days=2))
+            yield preview
+        finally:
+            for checker in preview._conditions.values():
+                checker.async_unload()
+
     def preview(
         self, day: date, schedule: dict[str, Any] | None, step_minutes: int
     ) -> list[list[float]]:
@@ -494,7 +654,13 @@ class CurveSchedulerRuntime:
                     x,
                     evaluate_curve(
                         data["profiles"][
-                            override or resolve_day(data, day, self._is_holiday).profile_id
+                            override
+                            or resolve_day(
+                                data,
+                                day,
+                                self._is_holiday,
+                                lambda index: self._matches_condition(index, day),
+                            ).profile_id
                         ]["curve"],
                         x,
                         self.axis,
@@ -508,7 +674,12 @@ class CurveSchedulerRuntime:
             if override is not None and override in data["profiles"]:
                 profile_id = override
             else:
-                profile_id = resolve_day(data, current_day, self._is_holiday).profile_id
+                profile_id = resolve_day(
+                    data,
+                    current_day,
+                    self._is_holiday,
+                    partial(self._matches_condition, day=current_day),
+                ).profile_id
             profiles.append(profile_points(data["profiles"][profile_id]))
         timeline = build_timeline(profiles)
         return [
@@ -529,7 +700,8 @@ class CurveSchedulerRuntime:
         if domain in ("climate", "water_heater"):
             raw = state.attributes.get(ATTR_TEMPERATURE)
         try:
-            return float(raw)
+            value = float(raw)
+            return value if math.isfinite(value) else None
         except TypeError, ValueError:
             return None
 
@@ -556,9 +728,34 @@ class CurveSchedulerRuntime:
                 now.date() - timedelta(days=2), now.date() + timedelta(days=3)
             )
         computed = self._compute(now)
-        if computed.value is not None:
-            await self._async_write(computed.value, force)
+        adjusted = self.adjusted_value(computed.value)
+        if adjusted is not None:
+            await self._async_write(adjusted, force)
         self._notify()
+
+    @property
+    def offset(self) -> float:
+        """Return the persisted additive adjustment shared by every plan."""
+        return float(self.data.get("offset", 0.0))
+
+    def adjusted_value(self, value: float | None) -> float | None:
+        """Apply adjustment before final output limits and rounding."""
+        if value is None:
+            return None
+        profile_id = self.current.profile_id if self.current else None
+        profile = self.data.get("profiles", {}).get(profile_id, {})
+        offset = self.offset if profile.get("apply_offset", True) else 0.0
+        return clamp(
+            round_to_step(clamp(value + offset, self.minimum, self.maximum), self.step),
+            self.minimum,
+            self.maximum,
+        )
+
+    async def async_clear_offset(self) -> None:
+        """Persist a zero adjustment and apply the current curve value."""
+        self.data["offset"] = 0.0
+        await self._async_persist()
+        await self.async_update(force=True)
 
     async def _async_write(self, value: float, force: bool) -> None:
         if not self.enabled or not self.target:
@@ -583,9 +780,15 @@ class CurveSchedulerRuntime:
             service, data = "set_value", {"value": value}
         else:
             service, data = "set_temperature", {ATTR_TEMPERATURE: value}
+        context = Context()
+        self._write_contexts.append(context.id)
         try:
             await self.hass.services.async_call(
-                domain, service, {ATTR_ENTITY_ID: self.target, **data}, blocking=True
+                domain,
+                service,
+                {ATTR_ENTITY_ID: self.target, **data},
+                blocking=True,
+                context=context,
             )
         except (HomeAssistantError, ValueError) as err:
             _LOGGER.error("Writing %s to %s failed: %s", value, self.target, err)
@@ -606,7 +809,9 @@ class CurveSchedulerRuntime:
         issues = validate_update(self.data, schedule, self.minimum, self.maximum, self.axis)
         if issues:
             raise ScheduleValidationError(issues)
-        self.data.update(normalize_schedule(schedule))
+        normalized = normalize_schedule(schedule)
+        await self._async_prepare_conditions(normalized)
+        self.data.update(normalized)
         self._sync_activation_sources()
         self.data["revision"] = self.revision + 1
         override = self.data.get("override")
@@ -743,6 +948,8 @@ class CurveSchedulerRuntime:
             "override": copy.deepcopy(self.data.get("override")),
             "value": current.value,
             "raw_value": current.raw,
+            "offset": self.offset,
+            "curve_value": self.adjusted_value(current.value),
             "input_value": current.input_x,
             "input_available": current.value is not None,
             "profile_id": current.profile_id,

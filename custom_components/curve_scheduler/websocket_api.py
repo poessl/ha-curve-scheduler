@@ -53,6 +53,7 @@ def async_register_websocket_api(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_preview)
     websocket_api.async_register_command(hass, ws_holidays)
     websocket_api.async_register_command(hass, ws_clone)
+    websocket_api.async_register_command(hass, ws_calendar)
 
 
 @websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/list"})
@@ -173,7 +174,13 @@ async def ws_preview(
             return
     for provider in [runtime.holidays, *runtime.activation_holidays.values()]:
         await provider.async_ensure(day - timedelta(days=2), day + timedelta(days=2))
-    curve = runtime.preview(day, schedule, msg["step_minutes"])
+    try:
+        curve = await runtime.async_preview(day, schedule, msg["step_minutes"])
+    except ScheduleValidationError as err:
+        connection.send_result(
+            msg["id"], {"ok": False, "errors": [i.as_dict() for i in err.issues]}
+        )
+        return
     connection.send_result(
         msg["id"], {"ok": True, "date": day.isoformat(), "mode": runtime.mode, "curve": curve}
     )
@@ -249,3 +256,46 @@ async def ws_clone(
             "config": entry.runtime_data.config_dict(),
         },
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/calendar",
+        vol.Required("entry_id"): str,
+        vol.Required("start"): str,
+        vol.Required("end"): str,
+        vol.Optional("schedule"): dict,
+    }
+)
+@websocket_api.async_response
+async def ws_calendar(
+    hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+) -> None:
+    """Resolve a calendar from saved or draft schedule using native conditions."""
+    runtime = _runtime(hass, connection, msg)
+    if runtime is None:
+        return
+    try:
+        start, end = date.fromisoformat(msg["start"]), date.fromisoformat(msg["end"])
+        if not 0 <= (end - start).days <= 61:
+            raise ValueError
+    except ValueError:
+        connection.send_error(msg["id"], "invalid_format", "Choose a date range of at most 62 days")
+        return
+    schedule = msg.get("schedule")
+    issues = (
+        validate_schedule(schedule, runtime.minimum, runtime.maximum, runtime.axis)
+        if schedule is not None
+        else []
+    )
+    if issues:
+        connection.send_result(msg["id"], {"ok": False, "errors": [i.as_dict() for i in issues]})
+        return
+    try:
+        days = await runtime.async_calendar(start, end, schedule)
+    except ScheduleValidationError as err:
+        connection.send_result(
+            msg["id"], {"ok": False, "errors": [i.as_dict() for i in err.issues]}
+        )
+        return
+    connection.send_result(msg["id"], {"ok": True, "days": days})

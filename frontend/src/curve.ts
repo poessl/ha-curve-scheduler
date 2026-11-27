@@ -52,6 +52,7 @@ interface DragState {
 
 export class CurveSchedulerCurve extends LitElement {
   static properties = {
+    offset: { attribute: false },
     points: { attribute: false },
     numericPoints: { attribute: false },
     axis: { attribute: false },
@@ -94,6 +95,7 @@ export class CurveSchedulerCurve extends LitElement {
   declare yLabelStep: number;
   declare editable: boolean;
   declare nowMinute: number | null;
+  declare offset: number;
   declare nowValue: number | null;
   declare selected: number | null;
   declare height: number;
@@ -121,6 +123,7 @@ export class CurveSchedulerCurve extends LitElement {
     this.yLabelStep = 0;
     this.editable = false;
     this.nowMinute = null;
+    this.offset = 0;
     this.nowValue = null;
     this.selected = null;
     this.height = 220;
@@ -163,6 +166,12 @@ export class CurveSchedulerCurve extends LitElement {
   private xOf(point: ChartPoint): number { return "x" in point ? point.x : parseTime(point.t); }
 
   private formatX(x: number): string {
+    if (this.axis?.source === "day_of_week") {
+      const day = Math.floor(x - 1);
+      const label = new Intl.DateTimeFormat(this.language, { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, 1 + ((day % 7) + 7) % 7)));
+      const minutes = Math.round((x - Math.floor(x)) * 1440);
+      return `${label}${day >= 7 ? " +1" : ""}${minutes ? ` ${formatTime(minutes)}` : ""}`;
+    }
     return this.axis ? formatNumber(x, this.xLabelStep || this.axis.step, this.language) : formatTime(x);
   }
 
@@ -443,7 +452,7 @@ export class CurveSchedulerCurve extends LitElement {
   // ------------------------------------------------------------------
   // Rendering
 
-  private curvePath(points: ChartPoint[], from: number, to: number): string {
+  private curvePath(points: ChartPoint[], from: number, to: number, adjusted = false): string {
     const timeline = this.timeline(points);
     if (!timeline) {
       return "";
@@ -456,7 +465,8 @@ export class CurveSchedulerCurve extends LitElement {
     const inputs = Array.from({ length: samples + 1 }, (_, i) => from + i * stepMinutes);
     if (this.axis) inputs.push(...points.flatMap(p => [this.xOf(p) - (to - from) * 1e-9, this.xOf(p)]).filter(x => x >= from && x <= to));
     for (const [i, minute] of [...new Set(inputs)].sort((a, b) => a - b).entries()) {
-      const value = clamp(interpolator.at(minute), this.min, this.max);
+      const raw = clamp(interpolator.at(minute), this.min, this.max);
+      const value = adjusted ? clamp(roundToStep(clamp(roundToStep(raw, this.step) + this.offset, this.min, this.max), this.step), this.min, this.max) : raw;
       const x = this.xFor(minute).toFixed(1);
       const y = this.yFor(value).toFixed(1);
       if (this.mode === "step" && previous !== null && value !== previous) {
@@ -471,7 +481,7 @@ export class CurveSchedulerCurve extends LitElement {
   private renderGrid() {
     const ticks = this.yLabelStep > 0 ? axisTicks(this.min, this.max, this.yLabelStep) : niceTicks(this.min, this.max, this.height < 180 ? 3 : 5);
     const narrow = this._width < 420;
-    const minutes = this.axis ? axisTicks(this.axis.min, this.axis.max, this.xLabelStep) : this.xLabelStep > 0 ? axisTicks(0, MINUTES_PER_DAY, this.xLabelStep) : (narrow ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24]).map(hour => hour * 60);
+    const minutes = this.axis?.source === "day_of_week" && !this.xLabelStep && this.axis.max - this.axis.min <= 8 ? Array.from({ length: Math.floor(this.axis.max) - Math.ceil(this.axis.min) + 1 }, (_, i) => Math.ceil(this.axis!.min) + i) : this.axis ? axisTicks(this.axis.min, this.axis.max, this.xLabelStep) : this.xLabelStep > 0 ? axisTicks(0, MINUTES_PER_DAY, this.xLabelStep) : (narrow ? [0, 6, 12, 18, 24] : [0, 3, 6, 9, 12, 15, 18, 21, 24]).map(hour => hour * 60);
     const bottom = PAD_TOP + this.plotHeight;
     return svg`
       ${ticks.map(
@@ -512,7 +522,7 @@ export class CurveSchedulerCurve extends LitElement {
       <line class="now" x1=${x} x2=${x} y1=${PAD_TOP} y2=${PAD_TOP + this.plotHeight}></line>
       ${
         this.nowValue !== null
-          ? svg`<circle class="now-dot" cx=${x} cy=${this.yFor(clamp(this.nowValue, this.min, this.max))} r="6"></circle>`
+          ? svg`<circle class="now-dot" cx=${x} cy=${this.yFor(this.offset !== 0 ? clamp(roundToStep(clamp(roundToStep(clamp(this.nowValue, this.min, this.max), this.step) + this.offset, this.min, this.max), this.step), this.min, this.max) : clamp(this.nowValue, this.min, this.max))} r="6"></circle>`
           : nothing
       }
     `;
@@ -599,6 +609,7 @@ export class CurveSchedulerCurve extends LitElement {
           ${dashed
             ? svg`<path class="curve continuation" d=${dashed} style="stroke: ${this.color}"></path>`
             : nothing}
+          ${this.offset !== 0 ? svg`<path class="curve offset-curve" d=${this.curvePath(points, this.domainStart, this.axis?.max ?? MINUTES_PER_DAY, true)} style="stroke: var(--secondary-text-color, #888); stroke-dasharray: 7 4"><title>${this.language.startsWith("de") ? "Kurvenwert mit Versatz" : "Curve value with offset"}</title></path>` : nothing}
           ${this.renderNow()}
           ${this._drag ? svg`
             <line class="guide" x1=${PAD_LEFT} x2=${this.xFor(this.xOf(points[this._drag.index]))} y1=${this.yFor(points[this._drag.index].v)} y2=${this.yFor(points[this._drag.index].v)}></line>

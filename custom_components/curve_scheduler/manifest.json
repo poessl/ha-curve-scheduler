@@ -14,10 +14,10 @@
     "websocket_api",
     "panel_custom"
   ],
-  "documentation": "https://github.com/timzifer/ha-curve-scheduler",
+  "documentation": "https://github.com/poessl/ha-curve-scheduler",
   "integration_type": "service",
   "iot_class": "calculated",
-  "issue_tracker": "https://github.com/timzifer/ha-curve-scheduler/issues",
+  "issue_tracker": "https://github.com/poessl/ha-curve-scheduler/issues",
   "requirements": [],
   "version": "0.2.0"
 }

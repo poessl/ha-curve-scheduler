@@ -148,3 +148,28 @@ def test_multiple_weekdays_validation_matching_and_migration() -> None:
     migrate_data(data)
     assert data["activations"][0] == {"type": "weekday", "days": ["thu"], "profile": "day_off"}
     assert migrate_data(data) == data
+
+
+def test_selected_fallback_is_validated_persisted_and_protected() -> None:
+    data = default_schedule(20, 70, 0.5, "en")
+    data["activations"] = []
+    data["fallback_profile"] = "day_off"
+    assert resolve_day(data, date(2026, 11, 27), lambda *_: False).profile_id == "day_off"
+    assert normalize_schedule(data)["fallback_profile"] == "day_off"
+    assert "fallback_profile" in profile_usages(data, "day_off")
+    data["fallback_profile"] = "missing"
+    assert any(issue.path == "fallback_profile" for issue in validate_schedule(data, 20, 70))
+
+
+async def test_configured_fallback_survives_reload(hass: HomeAssistant) -> None:
+    entry = await numeric_entry(hass)
+    runtime = entry.runtime_data
+    schedule = runtime.schedule_dict()
+    schedule["activations"] = []
+    schedule["fallback_profile"] = "day_off"
+    await runtime.async_save_schedule(schedule, runtime.revision)
+    assert runtime.current.profile_id == "day_off"
+    assert runtime.current.reason == "fallback"
+    await hass.config_entries.async_reload(entry.entry_id)
+    assert entry.runtime_data.data["fallback_profile"] == "day_off"
+    assert entry.runtime_data.current.profile_id == "day_off"

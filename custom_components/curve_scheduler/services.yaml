@@ -72,3 +72,11 @@ apply_now:
       selector:
         config_entry:
           integration: curve_scheduler
+
+clear_offset:
+  fields:
+    config_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: curve_scheduler

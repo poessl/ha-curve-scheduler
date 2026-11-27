@@ -64,6 +64,7 @@ export class CurveSchedulerPanel extends LitElement {
       type: "custom:curve-scheduler-card",
       entry_id: this.selected,
       view: "full",
+      editor_mode: "always",
     });
   }
 

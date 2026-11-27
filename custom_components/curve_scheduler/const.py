@@ -80,7 +80,7 @@ CONF_X_MIN: Final = "x_min"
 CONF_X_MAX: Final = "x_max"
 CONF_X_STEP: Final = "x_step"
 CONF_X_WRAP: Final = "x_wrap"
-AXIS_SOURCES: Final = ["time_of_day", "month_of_year", "sensor"]
+AXIS_SOURCES: Final = ["time_of_day", "day_of_week", "month_of_year", "sensor"]
 
 # One-time schedule seed consumed when a cloned config entry is first loaded.
 CONF_INITIAL_SCHEDULE: Final = "initial_schedule"

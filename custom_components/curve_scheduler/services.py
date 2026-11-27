@@ -133,6 +133,9 @@ def async_register_services(hass: HomeAssistant) -> None:
         )
         return {"removed": removed}
 
+    async def clear_offset(call: ServiceCall) -> None:
+        await get_runtime(hass, call.data[ATTR_CONFIG_ENTRY_ID]).async_clear_offset()
+
     async def apply_now(call: ServiceCall) -> None:
         await get_runtime(hass, call.data[ATTR_CONFIG_ENTRY_ID]).async_update(force=True)
 
@@ -152,4 +155,5 @@ def async_register_services(hass: HomeAssistant) -> None:
         REMOVE_EXCEPTION_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
+    hass.services.async_register(DOMAIN, "clear_offset", clear_offset, ENTRY_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_APPLY_NOW, apply_now, ENTRY_SCHEMA)

@@ -270,3 +270,127 @@ async def test_admin_can_clone(
     assert clone.runtime_data.enabled is False
     await client.send_json_auto_id({"type": "curve_scheduler/get", "entry_id": clone.entry_id})
     assert (await client.receive_json())["result"]["state"]["enabled"] is False
+
+
+async def test_conditions_and_plan_offset_roundtrip(
+    hass: HomeAssistant, entry: Any, client: Any
+) -> None:
+    runtime = entry.runtime_data
+    hass.states.async_set("sensor.mode", "home")
+    schedule = runtime.schedule_dict()
+    schedule["profiles"]["day_off"]["apply_offset"] = False
+    schedule["activations"] = [
+        {
+            "type": "condition",
+            "profile": "day_off",
+            "condition": {"condition": "state", "entity_id": "sensor.mode", "state": "home"},
+        }
+    ]
+    await client.send_json_auto_id(
+        {
+            "type": "curve_scheduler/save",
+            "entry_id": entry.entry_id,
+            "revision": runtime.revision,
+            "schedule": schedule,
+        }
+    )
+    response = await client.receive_json()
+    assert response["success"]
+    assert response["result"]["ok"]
+    await client.send_json_auto_id({"type": "curve_scheduler/get", "entry_id": entry.entry_id})
+    result = (await client.receive_json())["result"]
+    assert result["schedule"]["activations"] == schedule["activations"]
+    assert result["schedule"]["profiles"]["day_off"]["apply_offset"] is False
+    assert result["state"]["profile_id"] == "day_off"
+    assert result["state"]["offset"] == 0
+    assert result["state"]["curve_value"] == result["state"]["value"]
+
+
+async def test_invalid_native_condition_returns_actionable_error(entry: Any, client: Any) -> None:
+    runtime = entry.runtime_data
+    schedule = runtime.schedule_dict()
+    schedule["activations"] = [
+        {
+            "type": "condition",
+            "profile": "day_off",
+            "condition": {
+                "condition": "state",
+                "entity_id": "not an entity",
+                "state": "home",
+            },
+        }
+    ]
+    await client.send_json_auto_id(
+        {
+            "type": "curve_scheduler/save",
+            "entry_id": entry.entry_id,
+            "revision": runtime.revision,
+            "schedule": schedule,
+        }
+    )
+    result = (await client.receive_json())["result"]
+    assert result["ok"] is False
+    error = result["errors"][0]
+    assert error["code"] == "invalid_condition"
+    assert error["path"] == "activations.0.condition"
+    assert error["params"]["detail"]
+
+
+async def test_calendar_uses_native_conditions_and_unsaved_plan_deletion(
+    hass: HomeAssistant, entry: Any, client: Any
+) -> None:
+    runtime = entry.runtime_data
+    schedule = runtime.schedule_dict()
+    schedule["activations"] = [
+        {
+            "type": "condition",
+            "profile": "day_off",
+            "condition": {
+                "condition": "and",
+                "conditions": [
+                    {
+                        "condition": "numeric_state",
+                        "entity_id": "sensor.calendar_value",
+                        "above": 4,
+                        "below": 6,
+                    },
+                    {
+                        "condition": "curve_scheduler_weekday",
+                        "days": ["mon", "tue", "wed", "thu", "fri"],
+                    },
+                ],
+            },
+        }
+    ]
+    hass.states.async_set("sensor.calendar_value", "5")
+    await client.send_json_auto_id(
+        {
+            "type": "curve_scheduler/calendar",
+            "entry_id": entry.entry_id,
+            "start": "2026-11-27",
+            "end": "2026-11-28",
+            "schedule": schedule,
+        }
+    )
+    result = (await client.receive_json())["result"]
+    assert result["ok"]
+    assert result["days"] == [
+        {"date": "2026-11-27", "profile_id": "day_off", "reason": "condition"},
+        {"date": "2026-11-28", "profile_id": "workday", "reason": "fallback"},
+    ]
+    schedule["activations"] = []
+    schedule["exceptions"] = []
+    schedule["fallback_profile"] = "day_off"
+    del schedule["profiles"]["workday"]
+    await client.send_json_auto_id(
+        {
+            "type": "curve_scheduler/calendar",
+            "entry_id": entry.entry_id,
+            "start": "2026-11-27",
+            "end": "2026-11-27",
+            "schedule": schedule,
+        }
+    )
+    result = (await client.receive_json())["result"]
+    assert result["days"][0]["profile_id"] == "day_off"
+    assert "workday" in runtime.data["profiles"]  # Preview did not mutate saved plans.

@@ -18,6 +18,7 @@ def axis_config(options: dict[str, Any]) -> dict[str, Any]:
     minimum, maximum, step, wrap = {
         "time_of_day": (0.0, 1440.0, 5.0, True),
         "month_of_year": (1.0, 13.0, 0.01, True),
+        "day_of_week": (1.0, 8.0, 0.01, True),
         "sensor": (0.0, 100.0, 0.1, False),
     }[source]
     # Time uses the existing midnight-aware profile engine.
@@ -37,6 +38,8 @@ def input_value(hass: HomeAssistant, at: datetime, axis: dict[str, Any]) -> floa
         days = calendar.monthrange(at.year, at.month)[1]
         fraction = (at.day - 1 + (at.hour * 3600 + at.minute * 60 + at.second) / 86400) / days
         value = at.month + fraction
+    elif axis["source"] == "day_of_week":
+        value = at.weekday() + 1 + (at.hour * 3600 + at.minute * 60 + at.second) / 86400
     elif axis["source"] == "time_of_day":
         value = at.hour * 60 + at.minute + at.second / 60
     else:

@@ -18,7 +18,7 @@ from custom_components.curve_scheduler.const import DOMAIN
 from custom_components.curve_scheduler.model import ScheduleValidationError
 
 from .conftest import make_entry, setup_entry
-from .test_config_flow import SETTINGS
+from .test_config_flow import SETTINGS, group_settings, schema_fields
 
 SENSOR_OPTIONS = {
     "axis_source": "sensor",
@@ -46,8 +46,12 @@ async def numeric_entry(hass: HomeAssistant, **options: Any) -> Any:
 async def test_optional_target_flow(hass: HomeAssistant) -> None:
     for name in ("First", "Second"):
         flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
-        flow = await hass.config_entries.flow.async_configure(flow["flow_id"], {"name": name})
-        result = await hass.config_entries.flow.async_configure(flow["flow_id"], SETTINGS)
+        flow = await hass.config_entries.flow.async_configure(
+            flow["flow_id"], group_settings({"name": name})
+        )
+        result = await hass.config_entries.flow.async_configure(
+            flow["flow_id"], group_settings(SETTINGS)
+        )
         assert result["type"] is FlowResultType.CREATE_ENTRY
         await hass.async_block_till_done()
         assert hass.states.get(f"sensor.{name.lower()}_setpoint") is not None
@@ -154,11 +158,13 @@ async def test_month_and_wrapping_sensor(hass: HomeAssistant, berlin: None) -> N
 async def test_sensor_setup_and_remove_target(hass: HomeAssistant, target: str) -> None:
     flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
     flow = await hass.config_entries.flow.async_configure(
-        flow["flow_id"], {"name": "Sensor curve", "axis_source": "sensor"}
+        flow["flow_id"], group_settings({"name": "Sensor curve", "axis_source": "sensor"})
     )
     result = await hass.config_entries.flow.async_configure(
         flow["flow_id"],
-        {**SETTINGS, **{k: v for k, v in SENSOR_OPTIONS.items() if k != "axis_source"}},
+        group_settings(
+            {**SETTINGS, **{k: v for k, v in SENSOR_OPTIONS.items() if k != "axis_source"}}
+        ),
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
@@ -167,9 +173,11 @@ async def test_sensor_setup_and_remove_target(hass: HomeAssistant, target: str) 
     entry = await setup_entry(hass, make_entry())
     flow = await hass.config_entries.options.async_init(entry.entry_id)
     flow = await hass.config_entries.options.async_configure(
-        flow["flow_id"], {"axis_source": "time_of_day"}
+        flow["flow_id"], group_settings({"axis_source": "time_of_day"})
     )
-    result = await hass.config_entries.options.async_configure(flow["flow_id"], SETTINGS)
+    result = await hass.config_entries.options.async_configure(
+        flow["flow_id"], group_settings(SETTINGS)
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.runtime_data.target == ""
@@ -194,11 +202,17 @@ async def test_numeric_limits_cannot_exclude_saved_points(hass: HomeAssistant) -
     entry = await numeric_entry(hass)
     flow = await hass.config_entries.options.async_init(entry.entry_id)
     flow = await hass.config_entries.options.async_configure(
-        flow["flow_id"], {"axis_source": "sensor"}
+        flow["flow_id"], group_settings({"axis_source": "sensor"})
     )
     result = await hass.config_entries.options.async_configure(
         flow["flow_id"],
-        {**SETTINGS, **{k: v for k, v in SENSOR_OPTIONS.items() if k != "axis_source"}, "x_min": 0},
+        group_settings(
+            {
+                **SETTINGS,
+                **{k: v for k, v in SENSOR_OPTIONS.items() if k != "axis_source"},
+                "x_min": 0,
+            }
+        ),
     )
     assert result["errors"] == {"x_max": "curve_out_of_range"}
     assert entry.runtime_data.axis["min"] == -20
@@ -207,19 +221,21 @@ async def test_numeric_limits_cannot_exclude_saved_points(hass: HomeAssistant) -
 async def test_input_number_can_be_selected_and_evaluated(hass: HomeAssistant, target: str) -> None:
     flow = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
     flow = await hass.config_entries.flow.async_configure(
-        flow["flow_id"], {"name": "Helper input", "axis_source": "sensor"}
+        flow["flow_id"], group_settings({"name": "Helper input", "axis_source": "sensor"})
     )
-    selectors = {str(key): value for key, value in flow["data_schema"].schema.items()}
+    selectors = {str(key): value for key, value in schema_fields(flow["data_schema"]).items()}
     assert selectors["input_entity"].config["domain"] == ["sensor", "input_number", "number"]
     result = await hass.config_entries.flow.async_configure(
         flow["flow_id"],
-        {
-            **SETTINGS,
-            **{k: v for k, v in SENSOR_OPTIONS.items() if k != "axis_source"},
-            "input_entity": target,
-            "x_min": 20,
-            "x_max": 70,
-        },
+        group_settings(
+            {
+                **SETTINGS,
+                **{k: v for k, v in SENSOR_OPTIONS.items() if k != "axis_source"},
+                "input_entity": target,
+                "x_min": 20,
+                "x_max": 70,
+            }
+        ),
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
@@ -233,9 +249,9 @@ async def test_input_number_can_be_selected_and_evaluated(hass: HomeAssistant, t
     assert runtime.target == ""
     options = await hass.config_entries.options.async_init(result["result"].entry_id)
     options = await hass.config_entries.options.async_configure(
-        options["flow_id"], {"axis_source": "sensor"}
+        options["flow_id"], group_settings({"axis_source": "sensor"})
     )
-    selectors = {str(key): value for key, value in options["data_schema"].schema.items()}
+    selectors = {str(key): value for key, value in schema_fields(options["data_schema"]).items()}
     assert "input_number" in selectors["input_entity"].config["domain"]
 
 
@@ -250,18 +266,20 @@ async def test_switch_from_sensor_drops_required_input_field(
         profile["curve"] = [{"x": 1, "v": 30}, {"x": 7, "v": 60}]
     await runtime.async_save_schedule(schedule, runtime.revision)
     flow = await hass.config_entries.options.async_init(entry.entry_id)
-    assert {str(key) for key in flow["data_schema"].schema} == {"axis_source"}
+    assert {str(key) for key in schema_fields(flow["data_schema"])} == {"axis_source"}
     flow = await hass.config_entries.options.async_configure(
-        flow["flow_id"], {"axis_source": source}
+        flow["flow_id"], group_settings({"axis_source": source})
     )
-    fields = {str(key): key for key in flow["data_schema"].schema}
+    fields = {str(key): key for key in schema_fields(flow["data_schema"])}
     assert "input_entity" not in fields
     assert "axis_source" not in fields
     if source == "month_of_year":
         assert fields["x_min"].default() == 1
         assert fields["x_max"].default() == 13
         assert fields["x_wrap"].default() is True
-    result = await hass.config_entries.options.async_configure(flow["flow_id"], SETTINGS)
+    result = await hass.config_entries.options.async_configure(
+        flow["flow_id"], group_settings(SETTINGS)
+    )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     assert entry.runtime_data.axis["source"] == source
@@ -298,23 +316,25 @@ async def test_numeric_parameters_can_be_changed_after_setup(hass: HomeAssistant
     curve = entry.runtime_data.schedule_dict()["curve"]
     flow = await hass.config_entries.options.async_init(entry.entry_id)
     flow = await hass.config_entries.options.async_configure(
-        flow["flow_id"], {"axis_source": "sensor"}
+        flow["flow_id"], group_settings({"axis_source": "sensor"})
     )
     result = await hass.config_entries.options.async_configure(
         flow["flow_id"],
-        {
-            **SETTINGS,
-            **{key: value for key, value in SENSOR_OPTIONS.items() if key != "axis_source"},
-            "x_min": -30,
-            "x_max": 50,
-            "x_step": 0.5,
-            "min_value": 10,
-            "max_value": 80,
-            "step": 0.25,
-            "x_label_step": 20,
-            "y_label_step": 10,
-            "output_tick_seconds": 30,
-        },
+        group_settings(
+            {
+                **SETTINGS,
+                **{key: value for key, value in SENSOR_OPTIONS.items() if key != "axis_source"},
+                "x_min": -30,
+                "x_max": 50,
+                "x_step": 0.5,
+                "min_value": 10,
+                "max_value": 80,
+                "step": 0.25,
+                "x_label_step": 20,
+                "y_label_step": 10,
+                "output_tick_seconds": 30,
+            }
+        ),
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
@@ -327,3 +347,26 @@ async def test_numeric_parameters_can_be_changed_after_setup(hass: HomeAssistant
     assert runtime.config_dict()["x_label_step"] == 20
     assert runtime.config_dict()["y_label_step"] == 10
     assert runtime.schedule_dict()["curve"] == curve
+
+
+async def test_weekday_input_progresses_and_wraps(hass: HomeAssistant) -> None:
+    from datetime import datetime
+
+    from custom_components.curve_scheduler.axis import axis_config, input_value
+
+    axis = axis_config({"axis_source": "day_of_week"})
+    assert (axis["min"], axis["max"], axis["wrap"]) == (1, 8, True)
+    assert input_value(hass, datetime(2026, 11, 23, 12), axis) == 1.5
+    assert input_value(hass, datetime(2026, 11, 29, 12), axis) == 7.5
+    assert input_value(hass, datetime(2026, 11, 30, 0), axis) == 1
+
+
+async def test_weekday_axis_setup_and_reload(hass: HomeAssistant, freezer) -> None:
+    freezer.move_to("2026-11-23T12:00:00+01:00")
+    await hass.config.async_set_time_zone("Europe/Berlin")
+    entry = await setup_entry(hass, make_entry("", axis_source="day_of_week"))
+    assert entry.runtime_data.axis["source"] == "day_of_week"
+    assert entry.runtime_data.current.input_x == 1.5
+    assert entry.runtime_data.current.value is not None
+    await hass.config_entries.async_reload(entry.entry_id)
+    assert entry.runtime_data.current.input_x == 1.5

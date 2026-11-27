@@ -68,6 +68,7 @@ export class CurveSchedulerEditor extends LitElement {
     _saving: { state: true },
     _conflict: { state: true },
     _month: { state: true },
+    _calendar: { state: true },
     _holidays: { state: true },
     dragActivation: { state: true },
     dragTarget: { state: true },
@@ -92,6 +93,8 @@ export class CurveSchedulerEditor extends LitElement {
   declare _month: string; // YYYY-MM-01
   declare _holidays: Record<string, Set<string>>;
 
+  private _calendar: Record<string, { profile_id: string; reason: string }> | null = null;
+  private calendarRequest = 0;
   private t: Translate = translator("en");
   private messageTimer?: ReturnType<typeof setTimeout>;
 
@@ -169,14 +172,16 @@ export class CurveSchedulerEditor extends LitElement {
         }
       }
     }
+    if (changed.has("_draft") || changed.has("_month") || changed.has("data")) this._calendar = null;
     if (!this._month) {
       this._month = `${isoDate(new Date()).slice(0, 8)}01`;
     }
   }
 
   protected updated(changed: PropertyValues<this>): void {
-    if ((changed.has("_tab") || changed.has("_month") || changed.has("_draft")) && this._tab === "week") {
+    if ((changed.has("_tab") || changed.has("_month") || changed.has("_draft") || changed.has("data")) && this._tab === "week") {
       void this.loadHolidays(this._month);
+      void this.loadCalendar();
     }
     if (changed.has("_draft") || changed.has("_base")) {
       this.dispatchEvent(
@@ -393,6 +398,7 @@ export class CurveSchedulerEditor extends LitElement {
         if (usage.startsWith("week.")) {
           return this.t(`week.day.${usage.slice(5)}` as TranslationKey);
         }
+        if (usage === "fallback_profile") return this.t("usage.fallback_profile");
         if (usage === "holiday_profile") {
           return this.t("usage.holiday_profile");
         }
@@ -829,6 +835,12 @@ export class CurveSchedulerEditor extends LitElement {
         </div>
       </div>
       <div class="row">
+        <label class="check"><input type="checkbox" class="apply-offset"
+          .checked=${profile.apply_offset !== false}
+          @change=${(e: Event) => {
+            const enabled = (e.target as HTMLInputElement).checked;
+            this.change(draft => { draft.profiles[this._profileId].apply_offset = enabled; });
+          }}>${this.language.startsWith("de") ? "Versatz anwenden" : "Apply offset"}</label>
         <button @click=${() => this.duplicateProfile()}>${this.t("profiles.duplicate")}</button>
         <button class="danger" @click=${() => this.deleteProfile()}>
           ${this.t("profiles.delete")}
@@ -1062,7 +1074,14 @@ export class CurveSchedulerEditor extends LitElement {
     }
     const text = (en: string, de: string) => this.language.startsWith("de") ? de : en;
     return html`<h3>${this.t("editor.tab.week")}</h3>
-      <p class="muted">${text("First matching activation wins. If none matches, the first plan applies. Exceptions override activations.", "Die erste passende Aktivierung gilt. Ohne Treffer gilt der erste Plan. Ausnahmen haben Vorrang.")}</p>
+      ${(this._draft.activations ?? []).some(a => a.type === "condition") ? html`<p class="muted">${text("Entity conditions use live states. Calendar predictions use current entity states; future entity states cannot be predicted.", "Entitätsbedingungen verwenden aktuelle Zustände. Die Kalendervorschau verwendet aktuelle Entitätszustände; zukünftige Zustände sind nicht vorhersagbar.")}</p>` : nothing}
+      <p class="muted">${text("Entries are alternatives: the first matching entry wins. To require an entity value AND weekdays, combine them inside one AND group. If no entry matches, the selected fallback plan is used. Exceptions override activations.", "Einträge sind Alternativen: Der erste passende Eintrag gilt. Entitätswert UND Wochentage in einer UND-Gruppe kombinieren. Ohne Treffer gilt der ausgewählte Rückfallplan. Ausnahmen haben Vorrang.")}</p>
+      <label class="field">${text("Fallback plan", "Rückfallplan")}
+        <select class="fallback-plan" .value=${this._draft.fallback_profile ?? Object.keys(this._draft.profiles)[0]}
+          @change=${(e: Event) => this.change(draft => { draft.fallback_profile = (e.target as HTMLSelectElement).value; })}>
+          ${this.profileOptions(this._draft.fallback_profile ?? Object.keys(this._draft.profiles)[0])}
+        </select>
+      </label>
       <div class="activation-list ${this.dragActivation !== null ? "dragging" : ""}"
         @dragover=${(e: DragEvent) => { if (this.dragActivation !== null) e.preventDefault(); }}
         @drop=${(e: DragEvent) => { e.preventDefault(); this.finishActivationDrag(true); }}>
@@ -1088,9 +1107,10 @@ export class CurveSchedulerEditor extends LitElement {
         @dragend=${() => this.finishActivationDrag(false)}>
         <div class="row">
           <label class="field grow">${text("Condition", "Bedingung")}
-            <select .value=${entry.type} @change=${(e: Event) => this.updateActivation(index, { type: (e.target as HTMLSelectElement).value as Activation["type"], days: ["mon"], source: "" })}>
+            <select .value=${entry.type} @change=${(e: Event) => this.updateActivation(index, { type: (e.target as HTMLSelectElement).value as Activation["type"], days: ["mon"], source: "", condition: { condition: "state", entity_id: "", state: "" } })}>
               <option value="weekday">${text("Day of the week", "Wochentag")}</option>
               <option value="holiday">${text("Holiday calendar", "Feiertagskalender")}</option>
+              <option value="condition">${text("Custom condition", "Benutzerdefinierte Bedingung")}</option>
             </select>
           </label>
           <label class="field grow">${text("Target plan", "Zielplan")}
@@ -1114,7 +1134,7 @@ export class CurveSchedulerEditor extends LitElement {
               </label>`)}
             </div>
           </details>
-        </div>` : html`<label class="field">${text("Calendar or Workday binary sensor (off = day off)", "Kalender oder Workday-Binärsensor (aus = freier Tag)")}
+        </div>` : entry.type === "condition" ? this.renderEntityCondition(index, entry) : html`<label class="field">${text("Calendar or Workday binary sensor (off = day off)", "Kalender oder Workday-Binärsensor (aus = freier Tag)")}
             <ha-entity-picker .hass=${this.hass} .value=${entry.source ?? ""} .includeDomains=${["calendar", "binary_sensor"]} allow-custom-entity
               @value-changed=${(e: CustomEvent) => this.updateActivation(index, { source: e.detail.value ?? "" })}></ha-entity-picker>
           </label>`}
@@ -1129,11 +1149,117 @@ export class CurveSchedulerEditor extends LitElement {
       <button ?disabled=${entries.length >= 200} @click=${() => this.change(draft => { (draft.activations ??= []).push({ type: "weekday", days: ["mon"], profile: Object.keys(draft.profiles)[0] }); })}>${text("Add activation", "Aktivierung hinzufügen")}</button>${this.renderMonth()}`;
   }
 
+  private renderEntityCondition(index: number, entry: Activation): TemplateResult {
+    return this.renderConditionNode(entry.condition ?? { condition: "state", entity_id: "", state: "" },
+      condition => this.updateActivation(index, { condition }));
+  }
+
+  private renderConditionNode(condition: Record<string, unknown>, replace: (value: Record<string, unknown>) => void): TemplateResult {
+    const text = (en: string, de: string) => this.language.startsWith("de") ? de : en;
+    const update = (fields: Record<string, unknown>) => replace({ ...condition, ...fields });
+    const kind = String(condition.condition ?? "state");
+    const selector = html`<label class="field">${text("Condition type", "Bedingungstyp")}
+      <select aria-label=${text("Condition type", "Bedingungstyp")} .value=${kind} @change=${(e: Event) => {
+        const type = (e.target as HTMLSelectElement).value;
+        replace(type === "state" ? { condition: type, entity_id: "", state: "" }
+          : type === "numeric_state" ? { condition: type, entity_id: condition.entity_id ?? "", above: 0 }
+          : type === "curve_scheduler_month" ? { condition: type, months: [1] }
+          : type === "time" ? { condition: type, after: "08:00:00", before: "18:00:00" }
+          : type === "curve_scheduler_weekday" ? { condition: type, days: ["mon"] }
+          : type === "curve_scheduler_holiday" ? { condition: type, source: "" }
+          : { condition: type, conditions: ["and", "or", "not"].includes(kind) ? condition.conditions : [condition] });
+      }}>
+        <option value="state">${text("Entity state (exact text)", "Entitätszustand (exakter Text)")}</option>
+        <option value="numeric_state">${text("Numeric value", "Numerischer Wert")}</option>
+        <option value="curve_scheduler_month">${text("Month of year", "Monat im Jahr")}</option>
+        <option value="time">${text("Time of day", "Tageszeit")}</option>
+        <option value="curve_scheduler_weekday">${text("Weekday", "Wochentag")}</option>
+        <option value="curve_scheduler_holiday">${text("Holiday", "Feiertag")}</option>
+        <option value="and">AND</option><option value="or">OR</option><option value="not">NOT</option>
+      </select></label>`;
+    if (["and", "or", "not"].includes(kind)) {
+      const children = (condition.conditions ?? []) as Record<string, unknown>[];
+      return html`<fieldset class="condition-group"><legend>${text(kind === "and" ? "All conditions must match" : kind === "or" ? "At least one condition must match" : "None of these conditions may match", kind === "and" ? "Alle Bedingungen müssen zutreffen" : kind === "or" ? "Mindestens eine Bedingung muss zutreffen" : "Keine dieser Bedingungen darf zutreffen")}</legend>${selector}${children.map((child, i) => html`<fieldset class="condition-child">
+        ${this.renderConditionNode(child, value => update({ conditions: children.map((c, n) => n === i ? value : c) }))}
+        <button @click=${() => update({ conditions: children.filter((_, n) => n !== i) })}>${text("Remove condition", "Bedingung entfernen")}</button>
+      </fieldset>`)}<button @click=${() => update({ conditions: [...children, { condition: "state", entity_id: "", state: "" }] })}>${text("Add condition", "Bedingung hinzufügen")}</button></fieldset>`;
+    }
+    if (kind === "curve_scheduler_month") return html`<div class="condition-fields">${selector}<div class="row">${Array.from({length: 12}, (_, i) => i + 1).map(month => html`<label class="check"><input type="checkbox" .checked=${((condition.months ?? []) as number[]).includes(month)} @change=${(e: Event) => {
+      const months = new Set((condition.months ?? []) as number[]);
+      if ((e.target as HTMLInputElement).checked) months.add(month); else months.delete(month);
+      update({ months: [...months].sort((a,b) => a-b) });
+    }}>${new Intl.DateTimeFormat(this.language, { month: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2024, month - 1, 1)))}</label>`)}</div></div>`;
+    if (kind === "time") return html`<div class="condition-fields">${selector}<div class="row">${(["after", "before"] as const).map(bound => html`<label class="field grow">${text(bound === "after" ? "After (inclusive)" : "Before (exclusive)", bound === "after" ? "Ab (einschließlich)" : "Bis (ausschließlich)")}<input type="time" step="1" .value=${String(condition[bound] ?? "")} @change=${(e: Event) => {
+      const next = { ...condition }; const value = (e.target as HTMLInputElement).value;
+      if (value) next[bound] = value; else delete next[bound]; replace(next);
+    }}></label>`)}</div><p class="muted">${text("Home Assistant local time. Overnight ranges are supported; evaluated at each output update.", "Lokale Home-Assistant-Zeit. Zeiträume über Mitternacht sind möglich; Auswertung bei jeder Ausgangsaktualisierung.")}</p></div>`;
+    if (kind === "curve_scheduler_weekday") return html`${selector}<div class="row">${WEEKDAYS.map(day => html`<label class="check"><input type="checkbox" .checked=${((condition.days ?? []) as string[]).includes(day)} @change=${(e: Event) => {
+      const days = new Set((condition.days ?? []) as string[]);
+      if ((e.target as HTMLInputElement).checked) days.add(day); else days.delete(day);
+      update({ days: WEEKDAYS.filter(d => days.has(d)) });
+    }}>${this.t(`week.day.${day}` as TranslationKey)}</label>`)}</div>`;
+    if (kind === "curve_scheduler_holiday") return html`${selector}<ha-entity-picker .hass=${this.hass} .value=${condition.source ?? ""} .includeDomains=${["calendar", "binary_sensor"]} @value-changed=${(e: CustomEvent) => update({ source: e.detail.value ?? "" })}></ha-entity-picker>`;
+    if (kind === "numeric_state") return html`<div class="condition-fields">${selector}
+      <label class="field">${text("Entity", "Entität")}<ha-entity-picker .hass=${this.hass} .value=${condition.entity_id ?? ""} @value-changed=${(e: CustomEvent) => update({ entity_id: e.detail.value ?? "" })}></ha-entity-picker></label>
+      <label class="field">${text("Attribute (optional)", "Attribut (optional)")}<input .value=${String(condition.attribute ?? "")} @change=${(e: Event) => {
+        const next = { ...condition }; const value = (e.target as HTMLInputElement).value.trim();
+        if (value) next.attribute = value; else delete next.attribute; replace(next);
+      }}></label>
+      <div class="row">${(["above", "below"] as const).map(bound => html`<label class="field grow">${text(bound === "above" ? "Above (exclusive)" : "Below (exclusive)", bound === "above" ? "Größer als (exklusiv)" : "Kleiner als (exklusiv)")}
+        <input type="number" step="any" .value=${String(condition[bound] ?? "")} @change=${(e: Event) => {
+          const next = { ...condition }; const value = (e.target as HTMLInputElement).value;
+          if (value.trim()) next[bound] = Number(value); else delete next[bound]; replace(next);
+        }}></label>`)}</div>
+      <p class="muted">${text("Set at least one bound. Equal values are excluded. Both bounds must match.", "Mindestens eine Grenze angeben. Gleiche Werte sind ausgeschlossen. Beide Grenzen müssen zutreffen.")}</p>
+    </div>`;
+    return html`<div class="condition-fields" @dragstart=${(e: Event) => e.stopPropagation()}>${selector}
+      <label class="field">${text("Entity", "Entität")}
+        <ha-entity-picker .hass=${this.hass} .value=${condition.entity_id ?? ""} allow-custom-entity
+          @value-changed=${(e: CustomEvent) => update({ entity_id: e.detail.value ?? "" })}></ha-entity-picker>
+      </label>
+      <label class="field">${text("Attribute (optional)", "Attribut (optional)")}
+        <input .value=${String(condition.attribute ?? "")} @change=${(e: Event) => {
+          const next = { ...condition };
+          const attribute = (e.target as HTMLInputElement).value.trim();
+          if (attribute) next.attribute = attribute; else delete next.attribute;
+          replace(next);
+        }}>
+      </label>
+      ${condition.attribute ? html`<label class="field">${text("Value type", "Werttyp")}
+        <select .value=${typeof condition.state} @change=${(e: Event) => {
+          const type = (e.target as HTMLSelectElement).value;
+          update({ state: type === "number" ? Number(condition.state) || 0 : type === "boolean" ? condition.state === true || condition.state === "true" : String(condition.state ?? "") });
+        }}><option value="string">${text("Text", "Text")}</option><option value="number">${text("Number", "Zahl")}</option><option value="boolean">${text("Boolean", "Wahrheitswert")}</option></select>
+      </label>` : nothing}
+      <label class="field">${text("Expected value", "Erwarteter Wert")}
+        <input .value=${String(condition.state ?? "")} @change=${(e: Event) => {
+          const value = (e.target as HTMLInputElement).value;
+          update({ state: typeof condition.state === "boolean" ? value === "true" : typeof condition.state === "number" ? Number(value) : value });
+        }}>
+      </label>
+    </div>`;
+  }
+
   private renderActivationDropZone(position: number) {
     const text = this.language.startsWith("de") ? "Hier ablegen" : "Drop here";
     return html`<div style=${`order: ${position * 2}`} class="activation-drop-zone ${this.dragTarget === position ? "active" : ""}"
       @dragenter=${(e: DragEvent) => this.previewActivation(e, position)}
       @dragover=${(e: DragEvent) => this.previewActivation(e, position)}>${text}</div>`;
+  }
+
+  private async loadCalendar(): Promise<void> {
+    const request = ++this.calendarRequest;
+    const schedule = clone(this._draft);
+    const month = this._month;
+    const first = parseIsoDate(month);
+    const end = isoDate(new Date(first.getFullYear(), first.getMonth() + 1, 0, 12));
+    try {
+      const result = await this.hass.callWS<{ ok: boolean; days: { date: string; profile_id: string; reason: string }[] }>({
+        type: "curve_scheduler/calendar", entry_id: this.data.entry_id, start: month, end, schedule,
+      });
+      if (request !== this.calendarRequest || month !== this._month || JSON.stringify(schedule) !== JSON.stringify(this._draft)) return;
+      this._calendar = result?.ok ? Object.fromEntries(result.days.map(day => [day.date, day])) : null;
+    } catch { if (request === this.calendarRequest) this._calendar = null; }
   }
 
   private renderMonth() {
@@ -1158,14 +1284,18 @@ export class CurveSchedulerEditor extends LitElement {
     }
     for (let d = 1; d <= days; d++) {
       const iso = isoDate(new Date(year, month, d, 12));
-      const resolved = resolveDay(this._draft, iso, (day, source) => this._holidays[`${this._month}/${source}`]?.has(day) ?? false);
+      const serverDay = this._calendar?.[iso];
+      const hasConditions = this._draft.activations?.some(a => a.type === "condition");
+      const resolved = serverDay ? { profileId: serverDay.profile_id, reason: serverDay.reason }
+        : hasConditions ? { profileId: "", reason: "pending" }
+        : resolveDay(this._draft, iso, (day, source) => this._holidays[`${this._month}/${source}`]?.has(day) ?? false);
       const profile = this._draft.profiles[resolved.profileId];
       const mark = resolved.reason === "holiday" ? "★" : resolved.reason === "exception" ? "✈" : "";
       cells.push(
         html`<div
           class="cell ${iso === today ? "today" : ""}"
           style="--cell-color: ${profile?.color ?? "transparent"}"
-          title="${iso}: ${profile?.name ?? ""}"
+          title="${iso}: ${profile?.name ?? (this.language.startsWith("de") ? "Vorschau noch nicht verfügbar" : "Preview not yet available")}"
         >
           <span class="num">${d}</span><span class="mark">${mark}</span>
         </div>`,
@@ -1189,6 +1319,7 @@ export class CurveSchedulerEditor extends LitElement {
           ›
         </button>
       </div>
+      ${!this._calendar && this._draft.activations?.some(a => a.type === "condition") ? html`<p class="muted" role="status">${this.language.startsWith("de") ? "Kalendervorschau noch nicht verfügbar. Bedingungen müssen gültig sein." : "Calendar preview not yet available. Conditions must be valid."}</p>` : nothing}
       <div class="calendar">
         ${weekdayNames.map((name) => html`<div class="cell head">${name}</div>`)} ${cells}
       </div>
@@ -1378,7 +1509,19 @@ export class CurveSchedulerEditor extends LitElement {
       default:
         body = this.renderProfilesTab();
     }
-    return html`${this.renderTabs()}
+    const text = (en: string, de: string) => this.language.startsWith("de") ? de : en;
+    return html`<div class="row" aria-live="polite">
+      <span>${text("Raw curve value", "Unveränderter Kurvenwert")}: ${this.data.state.value ?? "–"} ${this.config.unit}</span>
+      <span>${text("Offset", "Versatz")}: ${this.data.state.offset ?? 0} ${this.config.unit}</span>
+      <span>${text("Curve value", "Kurvenwert")}: ${this.data.state.curve_value ?? this.data.state.value ?? "–"} ${this.config.unit}</span>
+      <button ?disabled=${!(this.data.state.offset ?? 0)} @click=${async () => {
+        try {
+          await this.hass!.callService("curve_scheduler", "clear_offset", { config_entry_id: this.data.entry_id });
+        } catch {
+          this.showMessage({ kind: "warning", text: text("Could not clear offset. Try again.", "Versatz konnte nicht zurückgesetzt werden. Erneut versuchen.") });
+        }
+      }}>${text("Clear offset", "Versatz zurücksetzen")}</button>
+    </div>${this.renderTabs()}
       <div class="body" role="tabpanel">${body}</div>
       ${this.renderFooter()}`;
   }
@@ -1391,6 +1534,11 @@ export class CurveSchedulerEditor extends LitElement {
         flex-direction: column;
         gap: var(--zp-gap);
       }
+      .condition-fields { display: grid; gap: 10px; min-width: 0; }
+      .condition-group, .condition-child { min-width: 0; margin: 8px 0; padding: 12px; border: 1px solid var(--divider-color); border-radius: 10px; display: grid; gap: 10px; }
+      .condition-group { border-left: 3px solid var(--primary-color); }
+      .condition-group legend { padding: 0 6px; font-weight: 500; font-size: 14px; }
+      .condition-fields ha-entity-picker { display: block; min-width: 0; width: 100%; }
       h3 {
         margin: 4px 0;
         font-size: 16px;

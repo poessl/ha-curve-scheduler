@@ -38,3 +38,24 @@ python scripts/acceptance/restart_check.py <workdir>/e2e.json scripts/acceptance
   locale); in the Companion App the device's locale is used.
 - The HACS check `brands` is ignored in CI until the icon has been added to
   [home-assistant/brands](https://github.com/home-assistant/brands).
+
+## Conditions and persistent offsets (2026-11-26)
+
+The isolated Home Assistant 2026.11.3 instance on port 8124 was used for a live
+save/read/reload check. A disabled clone named **Acceptance conditions** received
+an entity-state activation and a plan with Apply offset disabled. Saving through
+the integration WebSocket API selected the expected plan; reading and reloading
+the config entry preserved the condition, plan flag and selected plan. The clone
+remained disabled throughout. Existing curves were not edited.
+
+The live sidebar was separately inspected for the entity-condition option,
+Raw curve value / Offset / Curve value controls, and the per-plan toggle.
+Frontend regression tests cover editing typed attributes, nested logical groups,
+plan toggling and the clear-offset action. Backend regressions cover save/reload,
+cloning, typed comparison, missing entities, date-aware groups, live changes,
+reset behavior and self-write acknowledgment handling.
+
+A subsequent UI-driven check edited the expected entity state on the disabled
+clone, saved, reloaded the page, signed in again and verified the edited condition
+persisted and the nonmatching rule selected the fallback plan. Physical target
+devices were not used. The completed checklist and final results are recorded in TASKS.md.

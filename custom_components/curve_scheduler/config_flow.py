@@ -15,6 +15,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT, CONF_NAME
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 import probatio as vol
 
@@ -124,6 +125,7 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
             vol.Optional(
                 CONF_UNIT, description={"suggested_value": values.get(CONF_UNIT, "")}
             ): selector.TextSelector(),
+            vol.Optional("watch_target", default=values.get("watch_target", False)): bool,
             vol.Required(
                 CONF_THRESHOLD, default=values.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)
             ): _number(0, 1000),
@@ -145,7 +147,35 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
             ] = selector.EntitySelector(
                 selector.EntitySelectorConfig(domain=["sensor", "input_number", "number"])
             )
-    return vol.Schema(fields)
+    groups = {
+        "input": [CONF_INPUT, CONF_X_MIN, CONF_X_MAX, CONF_X_STEP, CONF_X_WRAP],
+        "target": [CONF_TARGET, "watch_target", CONF_TICK, CONF_THRESHOLD],
+        "output": [CONF_INTERPOLATION, CONF_MIN, CONF_MAX, CONF_STEP, CONF_UNIT],
+        "graph": ["x_label_step", "y_label_step"],
+    }
+    return vol.Schema(
+        {
+            vol.Optional(group, default=dict): section(
+                vol.Schema({key: fields[key] for name in names for key in fields if key == name}),
+                {"collapsed": False},
+            )
+            for group, names in groups.items()
+            if any(key in names for key in fields)
+        }
+    )
+
+
+def flatten_settings(user_input: dict[str, Any]) -> dict[str, Any]:
+    """Flatten UI sections while accepting legacy flat settings submissions."""
+    return {
+        name: value
+        for key, item in user_input.items()
+        for name, value in (
+            item.items()
+            if key in ("input", "target", "output", "graph") and isinstance(item, dict)
+            else [(key, item)]
+        )
+    }
 
 
 def validate_settings(user_input: dict[str, Any]) -> dict[str, str]:
@@ -282,7 +312,7 @@ class CurveSchedulerConfigFlow(ConfigFlow, domain=DOMAIN):
         """Ask for the remaining settings."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            user_input = {CONF_AXIS: self._axis, **user_input}
+            user_input = {CONF_AXIS: self._axis, **flatten_settings(user_input)}
             errors = validate_settings({**user_input, CONF_TARGET: self._target})
             if not errors:
                 return self.async_create_entry(
@@ -339,7 +369,7 @@ class CurveSchedulerOptionsFlow(OptionsFlow):
         """Show only the settings applicable to the selected axis."""
         errors: dict[str, str] = {}
         if user_input is not None:
-            user_input = {**user_input, CONF_AXIS: self._axis}
+            user_input = {**flatten_settings(user_input), CONF_AXIS: self._axis}
             errors = validate_settings(user_input)
             target = user_input.get(CONF_TARGET) or ""
             if (

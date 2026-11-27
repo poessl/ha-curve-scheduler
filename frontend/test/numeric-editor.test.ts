@@ -150,3 +150,15 @@ it("uses numeric axis resolution for shared keyboard and tap controls", async ()
   await editor.updateComplete;
   expect(editor.points.map(p => p.x)).toEqual([-19, 10, 40]);
 });
+
+it("labels the built-in weekly axis with weekdays", async () => {
+  const { editor } = await mount();
+  editor.data = { ...editor.data, config: { ...editor.data.config, axis: { source: "day_of_week", input_entity: null, min: 1, max: 8, step: 0.01, wrap: true } } };
+  editor.points = [{ x: 1, v: 30 }, { x: 4, v: 60 }];
+  await editor.updateComplete;
+  await graph(editor).updateComplete;
+  const labels = graph(editor).shadowRoot!.querySelectorAll('.label.x');
+  expect(labels[0].textContent).toBe("Mon");
+  expect(labels[6].textContent).toBe("Sun");
+  expect(labels[7].textContent).toBe("Mon +1");
+});

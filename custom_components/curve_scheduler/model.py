@@ -8,6 +8,7 @@ translate.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 import math
@@ -49,6 +50,7 @@ EDITABLE_KEYS = (
     "auto_cleanup",
     "curve",
     "activations",
+    "fallback_profile",
 )
 
 
@@ -127,6 +129,7 @@ def default_schedule(minimum: float, maximum: float, step: float, language: str)
             "sun": "day_off",
         },
         "holiday_profile": "day_off",
+        "fallback_profile": "workday",
         "exceptions": [],
         "auto_cleanup": False,
         "enabled": True,
@@ -269,6 +272,8 @@ def validate_schedule(
         if not isinstance(profile, Mapping):
             _issue(issues, "invalid_format", path)
             continue
+        if "apply_offset" in profile and not isinstance(profile["apply_offset"], bool):
+            _issue(issues, "invalid_format", f"{path}.apply_offset")
         name = profile.get("name")
         if not isinstance(name, str) or not name.strip():
             _issue(issues, "empty_name", f"{path}.name")
@@ -309,6 +314,8 @@ def validate_schedule(
         if not isinstance(value, str) or value not in profiles:
             _issue(issues, "unknown_profile", path, profile=str(value))
 
+    if "fallback_profile" in data:
+        check_reference(data["fallback_profile"], "fallback_profile")
     activations = data.get("activations")
     if "activations" in data:
         if not isinstance(activations, list) or len(activations) > MAX_EXCEPTIONS:
@@ -329,6 +336,9 @@ def validate_schedule(
                         or len(set(days)) != len(days)
                     ):
                         _issue(issues, "invalid_format", f"{path}.days")
+                elif activation.get("type") == "condition":
+                    if not isinstance(activation.get("condition"), Mapping):
+                        _issue(issues, "invalid_format", f"{path}.condition")
                 elif activation.get("type") == "holiday":
                     source = activation.get("source")
                     if not isinstance(source, str) or not re.fullmatch(
@@ -384,7 +394,9 @@ def validate_schedule(
 def profile_usages(data: Mapping[str, Any], profile_id: str) -> list[str]:
     """Return where a profile is referenced (for delete protection)."""
     if "activations" in data:
-        usages: list[str] = []
+        usages: list[str] = (
+            ["fallback_profile"] if data.get("fallback_profile") == profile_id else []
+        )
         for key in ("activations", "exceptions"):
             entries = data.get(key)
             if isinstance(entries, list):
@@ -466,6 +478,7 @@ def normalize_schedule(data: Mapping[str, Any]) -> dict[str, Any]:
             profile_id: {
                 "name": profile["name"].strip(),
                 "color": profile["color"].lower(),
+                **({"apply_offset": profile["apply_offset"]} if "apply_offset" in profile else {}),
                 **(
                     {"curve": [dict(point) for point in profile["curve"]]}
                     if "curve" in profile
@@ -491,7 +504,11 @@ def normalize_schedule(data: Mapping[str, Any]) -> dict[str, Any]:
                                 ]
                             }
                             if a["type"] == "weekday"
-                            else {"source": a["source"]}
+                            else (
+                                {"condition": deepcopy(a["condition"])}
+                                if a["type"] == "condition"
+                                else {"source": a["source"]}
+                            )
                         ),
                     }
                     for a in data["activations"]
@@ -502,6 +519,7 @@ def normalize_schedule(data: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "week": dict(data["week"]) if isinstance(data.get("week"), Mapping) else {},
         "holiday_profile": data.get("holiday_profile", next(iter(data["profiles"]))),
+        "fallback_profile": data.get("fallback_profile", next(iter(data["profiles"]))),
         "exceptions": exceptions,
         "auto_cleanup": bool(data.get("auto_cleanup", False)),
     }
@@ -519,6 +537,7 @@ def resolve_day(
     data: Mapping[str, Any],
     day: date,
     is_holiday: Callable[..., bool],
+    matches_condition: Callable[[int], bool] | None = None,
 ) -> DayProfile:
     """Resolve the automatic profile of a day (without manual override).
 
@@ -530,14 +549,20 @@ def resolve_day(
         if exception["from"] <= iso <= exception["to"]:
             return DayProfile(exception["profile"], REASON_EXCEPTION)
     if "activations" in data:
-        for activation in data["activations"]:
+        for index, activation in enumerate(data["activations"]):
+            if (
+                activation["type"] == "condition"
+                and matches_condition is not None
+                and matches_condition(index)
+            ):
+                return DayProfile(activation["profile"], "condition")
             if activation["type"] == "weekday" and WEEKDAYS[day.weekday()] in activation.get(
                 "days", [activation.get("day")]
             ):
                 return DayProfile(activation["profile"], REASON_WEEKDAY)
             if activation["type"] == "holiday" and is_holiday(day, activation["source"]):
                 return DayProfile(activation["profile"], REASON_HOLIDAY)
-        return DayProfile(next(iter(data["profiles"])), REASON_WEEKDAY)
+        return DayProfile(data["fallback_profile"], "fallback")
     if is_holiday(day):
         return DayProfile(data["holiday_profile"], REASON_HOLIDAY)
     return DayProfile(data["week"][WEEKDAYS[day.weekday()]], REASON_WEEKDAY)

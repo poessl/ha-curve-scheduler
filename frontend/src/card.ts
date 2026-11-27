@@ -24,7 +24,16 @@ import type { NumericEditor } from "./numeric-editor";
 export interface CurveSchedulerCardConfig {
   type: string;
   entry_id?: string;
-  view?: "compact" | "full";
+  view?: "compact" | "full" | "graph";
+  show_edit?: boolean;
+  editor_mode?: "hidden" | "button" | "always";
+  show_title?: boolean;
+  show_summary?: boolean;
+  show_reason?: boolean;
+  show_input?: boolean;
+  show_offset?: boolean;
+  show_clear_offset?: boolean;
+  show_controls?: boolean;
   allow_edit?: boolean;
   title?: string;
 }
@@ -178,8 +187,16 @@ export class CurveSchedulerCard extends LitElement {
 
   // ------------------------------------------------------------------
 
+  private get editorMode(): "hidden" | "button" | "always" {
+    return this._config.editor_mode ?? (this._config.show_edit === false || this._config.view === "graph" ? "hidden" : this._config.view === "full" ? "always" : "button");
+  }
+
   private get canEdit(): boolean {
-    return this._config.allow_edit !== false || this.hass?.user?.is_admin === true;
+    return this.editorMode !== "hidden" && (this._config.allow_edit !== false || this.hass?.user?.is_admin === true);
+  }
+
+  private infoVisible(key: "show_title" | "show_summary" | "show_reason" | "show_input" | "show_offset"): boolean {
+    return this._config[key] ?? this._config.view !== "graph";
   }
 
   private get editor(): CurveSchedulerEditor | null {
@@ -271,7 +288,7 @@ export class CurveSchedulerCard extends LitElement {
       : null;
     const parts = [
       this.t("today.title", { profile: profile?.name ?? "?" }),
-      this.t("today.now", { value: state.value === null ? "—" : this.fmt(state.value) }),
+      this.t("today.now", { value: state.value === null ? "—" : this.fmt(state.curve_value ?? state.value) }),
     ];
     if (state.next_point) {
       parts.push(
@@ -293,12 +310,8 @@ export class CurveSchedulerCard extends LitElement {
       }
     }
     const modeValue = state.override ? state.override.profile : "auto";
-    return html`
-      <div class="summary">
-        <div class="headline">${parts.join(" · ")}</div>
-        ${reason ? html`<div class="muted">${reason}</div>` : nothing}
-      </div>
-      ${config.axis && config.axis.source !== "time_of_day" ? html`<curve-scheduler-numeric-editor .data=${{ ...data, schedule: { ...schedule, curve: profile?.curve ?? [] } }} .language=${this.language}></curve-scheduler-numeric-editor>` : html`<curve-scheduler-curve
+    const graph = html`${config.axis && config.axis.source !== "time_of_day" ? html`<curve-scheduler-numeric-editor .graphOnly=${!this.infoVisible("show_input")} .data=${{ ...data, schedule: { ...schedule, curve: profile?.curve ?? [] } }} .language=${this.language} .offset=${profile?.apply_offset === false ? 0 : state.offset ?? 0}></curve-scheduler-numeric-editor>` : html`<curve-scheduler-curve
+        .offset=${profile?.apply_offset === false ? 0 : state.offset ?? 0}
         .points=${profile?.points ?? []}
         .context=${context}
         .mode=${config.interpolation}
@@ -314,12 +327,25 @@ export class CurveSchedulerCard extends LitElement {
         .nowValue=${nowValue}
         .height=${170}
         .showContinuation=${false}
-      ></curve-scheduler-curve>`}
+      ></curve-scheduler-curve>`}`;
+    return html`
+      ${this.infoVisible("show_summary") || (reason && this.infoVisible("show_reason")) ? html`<div class="summary">
+        ${this.infoVisible("show_summary") ? html`<div class="headline">${parts.join(" · ")}</div>` : nothing}
+        ${reason && this.infoVisible("show_reason") ? html`<div class="muted">${reason}</div>` : nothing}
+      </div>` : nothing}
+      ${(this.infoVisible("show_offset") && (state.offset ?? 0) !== 0) || this._config.show_clear_offset ? html`<div class="top-offset">
+        ${this.infoVisible("show_offset") && (state.offset ?? 0) !== 0 ? html`<span>${this.language.startsWith("de") ? "Versatz" : "Offset"}: ${this.fmt(state.offset!)}</span>` : nothing}
+        ${this._config.show_clear_offset ? html`<button class="clear-offset" ?disabled=${!(state.offset ?? 0)} @click=${async () => {
+          try { await this.hass!.callService("curve_scheduler", "clear_offset", { config_entry_id: data.entry_id }); }
+          catch { this._error = this.language.startsWith("de") ? "Versatz konnte nicht zurückgesetzt werden." : "Could not clear offset."; }
+        }}>${this.language.startsWith("de") ? "Versatz zurücksetzen" : "Clear offset"}</button>` : nothing}
+      </div>` : nothing}
+      ${graph}
       ${state.enabled ? nothing : html`<div class="notice warning">${this.t("today.disabled")}</div>`}
       ${state.enabled && config.target && !state.target_available
         ? html`<div class="notice warning">${this.t("today.unavailable")}</div>`
         : nothing}
-      <div class="actions">
+      ${(this._config.show_controls ?? this._config.view !== "graph") ? html`<div class="actions">
         <label class="field mode">
           ${this.t("today.mode")}
           <select
@@ -337,13 +363,13 @@ export class CurveSchedulerCard extends LitElement {
         <button @click=${() => (this._holidayForm ? (this._holidayForm = null) : this.openHolidayForm())}>
           ${this.t("today.add_holiday")}
         </button>
-        ${this._config.view !== "full" && this.canEdit
+      </div>
+      ${this._holidayForm ? this.renderHolidayForm(data) : nothing}` : nothing}
+        ${this.editorMode === "button" && this.canEdit
           ? html`<button class="primary edit" @click=${() => this.toggleEditor()}>
               ${this._editorOpen ? this.t("today.close_editor") : this.t("today.edit")}
             </button>`
           : nothing}
-      </div>
-      ${this._holidayForm ? this.renderHolidayForm(data) : nothing}
       ${this._notice ? html`<div class="notice success" role="status">${this._notice}</div>` : nothing}
     `;
   }
@@ -393,14 +419,14 @@ export class CurveSchedulerCard extends LitElement {
     if (!this._config) {
       return nothing;
     }
-    const title = this._config.title ?? this._data?.title;
+    const title = !this.infoVisible("show_title") ? null : this._config.title ?? this._data?.title;
     let content;
     if (this._error) {
       content = html`<div class="notice error">${this._error}</div>`;
     } else if (!this._data) {
       content = html`<div class="muted">${this.t("card.loading")}</div>`;
     } else {
-      const showEditor = this.canEdit && (this._config.view === "full" || this._editorOpen);
+      const showEditor = this.canEdit && (this.editorMode === "always" || this._editorOpen);
       content = html`
         ${this.renderToday(this._data)}
         ${showEditor
@@ -435,8 +461,11 @@ export class CurveSchedulerCard extends LitElement {
         padding: 12px 16px 16px;
         display: flex;
         flex-direction: column;
-        gap: var(--zp-gap);
+        gap: 6px;
       }
+      .summary { margin: 0; }
+      .top-offset { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+      .clear-offset { margin-left: auto; padding: 4px 10px; min-height: 32px; }
       .headline {
         font-size: 16px;
         font-weight: 500;

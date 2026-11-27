@@ -26,6 +26,8 @@ async def async_setup_entry(
     async_add_entities(
         [
             SetpointSensor(runtime),
+            CurveValueSensor(runtime),
+            OffsetSensor(runtime),
             ProfileSensor(runtime),
         ]
     )
@@ -76,6 +78,37 @@ class SetpointSensor(CurveSchedulerEntity, SensorEntity):
             "raw_value": round(current.raw, 4) if current.raw is not None else None,
             "enabled": self.runtime.enabled,
         }
+
+
+class CurveValueSensor(SetpointSensor):
+    """The output with the persisted offset applied."""
+
+    def __init__(self, runtime: CurveSchedulerRuntime) -> None:
+        """Initialize the adjusted output sensor."""
+        super().__init__(runtime)
+        CurveSchedulerEntity.__init__(self, runtime, "curve_value", "curve_value", "sensor")
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the adjusted output."""
+        return self.runtime.adjusted_value(super().native_value)
+
+
+class OffsetSensor(CurveSchedulerEntity, SensorEntity):
+    """The persistent additive adjustment in output units."""
+
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, runtime: CurveSchedulerRuntime) -> None:
+        """Initialize the adjustment sensor."""
+        super().__init__(runtime, "offset", "offset", "sensor")
+        self._attr_native_unit_of_measurement = runtime.unit
+        self._attr_suggested_display_precision = _precision(runtime.step)
+
+    @property
+    def native_value(self) -> float:
+        """Return the stored adjustment even when the input is unavailable."""
+        return self.runtime.offset
 
 
 class ProfileSensor(CurveSchedulerEntity, SensorEntity):

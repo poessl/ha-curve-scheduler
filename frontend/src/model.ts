@@ -31,9 +31,10 @@ export interface SchedulePoint {
   v: number;
 }
 
-export interface Activation { type: "weekday" | "holiday"; profile: string; days?: Weekday[]; day?: Weekday; source?: string; }
+export interface Activation { type: "weekday" | "holiday" | "condition"; condition?: Record<string, unknown>; profile: string; days?: Weekday[]; day?: Weekday; source?: string; }
 
 export interface Profile {
+  apply_offset?: boolean;
   curve?: NumericPoint[];
   name: string;
   color: string;
@@ -49,7 +50,7 @@ export interface ScheduleException {
 }
 
 export interface NumericPoint { x: number; v: number; }
-export interface AxisConfig { source: "time_of_day" | "month_of_year" | "sensor"; input_entity: string | null; min: number; max: number; step: number; wrap: boolean; }
+export interface AxisConfig { source: "time_of_day" | "day_of_week" | "month_of_year" | "sensor"; input_entity: string | null; min: number; max: number; step: number; wrap: boolean; }
 
 export interface Schedule {
   activations?: Activation[];
@@ -57,11 +58,13 @@ export interface Schedule {
   profiles: Record<string, Profile>;
   week: Record<Weekday, string>;
   holiday_profile: string;
+  fallback_profile?: string;
   exceptions: ScheduleException[];
   auto_cleanup: boolean;
 }
 
 export interface InstanceConfig {
+  watch_target?: boolean;
   x_label_step?: number;
   y_label_step?: number;
   axis?: AxisConfig;
@@ -77,9 +80,11 @@ export interface InstanceConfig {
   threshold: number;
 }
 
-export type Reason = "weekday" | "holiday" | "exception" | "override";
+export type Reason = "fallback" | "condition" | "weekday" | "holiday" | "exception" | "override";
 
 export interface LiveState {
+  offset?: number;
+  curve_value?: number | null;
   input_value?: number | null;
   input_available?: boolean;
   now: string;
@@ -194,6 +199,7 @@ export function validateSchedule(data: Schedule, min: number, max: number, axis?
     if (!PROFILE_ID_RE.test(id)) {
       add("invalid_profile_id", path);
     }
+    if (profile.apply_offset !== undefined && typeof profile.apply_offset !== "boolean") add("invalid_format", `${path}.apply_offset`);
     const name = typeof profile.name === "string" ? profile.name : "";
     if (!name.trim()) {
       add("empty_name", `${path}.name`);
@@ -221,11 +227,16 @@ export function validateSchedule(data: Schedule, min: number, max: number, axis?
       add("unknown_profile", path, { profile: String(value) });
     }
   };
+  if (data.fallback_profile !== undefined) checkReference(data.fallback_profile, "fallback_profile");
   if (data.activations) {
     if (data.activations.length > MAX_EXCEPTIONS) add("invalid_format", "activations");
     data.activations.forEach((a, i) => {
       checkReference(a.profile, `activations.${i}.profile`);
       const days = a.days ?? [a.day!];
+      if (a.type === "condition") {
+        if (!a.condition || typeof a.condition !== "object" || Array.isArray(a.condition)) add("invalid_format", `activations.${i}.condition`);
+        return;
+      }
       if (a.type === "weekday" ? !Array.isArray(days) || !days.length || days.some(day => !WEEKDAYS.includes(day)) || new Set(days).size !== days.length : a.type !== "holiday" || !/^(calendar|binary_sensor)\.[a-z0-9_]+$/.test(a.source ?? "")) add("invalid_format", `activations.${i}`);
     });
   } else {
@@ -262,6 +273,7 @@ export function profileUsages(data: Schedule, profileId: string): string[] {
   const usages: string[] = data.activations ? data.activations.flatMap((a, i) => a.profile === profileId ? [`activations.${i}`] : []) : WEEKDAYS.filter((day) => data.week[day] === profileId).map(
     (day) => `week.${day}`,
   );
+  if (data.fallback_profile === profileId) usages.push("fallback_profile");
   if (!data.activations && data.holiday_profile === profileId) {
     usages.push("holiday_profile");
   }
@@ -319,7 +331,7 @@ export function resolveDay(
       if (a.type === "weekday" && (a.days ?? [a.day]).includes(weekdayOf(day))) return { profileId: a.profile, reason: "weekday" };
       if (a.type === "holiday" && isHoliday(day, a.source)) return { profileId: a.profile, reason: "holiday" };
     }
-    return { profileId: Object.keys(data.profiles)[0], reason: "weekday" };
+    return { profileId: data.fallback_profile ?? Object.keys(data.profiles)[0], reason: "fallback" };
   }
   if (isHoliday(day)) {
     return { profileId: data.holiday_profile, reason: "holiday" };
