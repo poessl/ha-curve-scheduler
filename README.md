@@ -324,7 +324,7 @@ axes) must be chosen.
 |---|---|---|
 | Name | e.g. "Circulation" | – |
 | Target | Optional: `number`, `input_number`, `climate` (attribute `temperature`) or `water_heater` | – |
-| Output tick | seconds between input sampling and output updates (1–86400) | 300 |
+| Output tick / Time unit | time between input sampling and output updates; seconds, minutes, hours, days, weeks, or months (up to about 100 years) | 5 minutes |
 | X-axis source | time of day / day of week / month of year / sensor | time of day |
 | Input entity | numeric state from `sensor`, `input_number` or `number`; required for a sensor axis | – |
 | Input display decimals | 0–6 decimal places for the numeric input readout; calculation keeps full precision and clock times keep their time format | 2 |
@@ -435,6 +435,15 @@ A plan can change during a day, for example when a time condition starts matchin
 - Immediately after startup, **Save**, mode changes, holiday/activation source
   changes, enabling the curve, or **Apply now**.
 - On sensor-input changes, subject to the write threshold.
+
+Choose an **Output tick** value and **Time unit** under **Curve settings → Configure**.
+Months use whole calendar months: a January 31 start ticks on February's last day,
+then March 31. Days and weeks keep the local clock time across daylight-saving
+changes; seconds, minutes, and hours measure elapsed time. A clock time skipped by
+daylight saving moves forward by the gap. The cadence restarts when the integration
+starts or its settings reload. Existing second and minute intervals keep their timing.
+Each curve schedules only its next update through Home Assistant's timer helper;
+there is no polling loop. Delayed ticks run once and skip missed intervals.
 
 Writes are skipped if the target already has the calculated value. Periodic
 writes also respect the **write threshold**. While the curve is disabled, sensors

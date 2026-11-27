@@ -6,7 +6,9 @@ from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 import probatio as vol
+import pytest
 
+from custom_components.curve_scheduler.config_flow import validate_settings
 from custom_components.curve_scheduler.const import (
     CONF_HOLIDAY_SOURCE,
     CONF_INTERPOLATION,
@@ -16,6 +18,8 @@ from custom_components.curve_scheduler.const import (
     CONF_TARGET,
     CONF_THRESHOLD,
     CONF_TICK,
+    CONF_TICK_UNIT,
+    CONF_TICK_VALUE,
     CONF_UNIT,
     DOMAIN,
 )
@@ -23,7 +27,8 @@ from custom_components.curve_scheduler.const import (
 from .conftest import make_entry, setup_entry
 
 SETTINGS = {
-    CONF_TICK: 300,
+    CONF_TICK_VALUE: 300,
+    CONF_TICK_UNIT: "seconds",
     CONF_INTERPOLATION: "curve",
     CONF_MIN: 20,
     CONF_MAX: 70,
@@ -60,7 +65,8 @@ async def test_full_flow(hass: HomeAssistant, target: str) -> None:
     assert result["title"] == "Zirkulation"
     assert result["data"] == {"name": "Zirkulation", CONF_TARGET: target}
     assert result["options"][CONF_HOLIDAY_SOURCE] is None
-    assert result["options"][CONF_TICK] == 300
+    assert result["options"][CONF_TICK_VALUE] == 300
+    assert result["options"][CONF_TICK_UNIT] == "seconds"
     await hass.async_block_till_done()
 
     # A single fallback plan was created and the entities exist.
@@ -109,15 +115,70 @@ async def test_options_flow(hass: HomeAssistant, target: str) -> None:
             {
                 **SETTINGS,
                 CONF_TARGET: target,
-                CONF_TICK: 10,
+                CONF_TICK_VALUE: 10,
                 CONF_INTERPOLATION: "linear",
             }
         ),
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    assert entry.options[CONF_TICK] == 10
+    assert entry.options[CONF_TICK_VALUE] == 10
     assert entry.runtime_data.mode == "linear"
+
+
+@pytest.mark.parametrize("unit", ["seconds", "minutes", "hours", "days", "weeks", "months"])
+async def test_tick_value_and_unit_roundtrip(hass: HomeAssistant, unit: str) -> None:
+    entry = await setup_entry(hass, make_entry("", output_tick=2, output_tick_unit=unit))
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {"axis_source": "time_of_day"}
+    )
+    values = form_defaults(flow)
+    assert values["output"][CONF_TICK_VALUE] == 2
+    assert values["output"][CONF_TICK_UNIT] == unit
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], values)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options[CONF_TICK_VALUE] == 2
+    assert entry.options[CONF_TICK_UNIT] == unit
+    assert entry.runtime_data.config_dict()[CONF_TICK_UNIT] == unit
+
+
+@pytest.mark.parametrize(
+    ("legacy", "value", "unit"),
+    [({"interval": 7}, 7, "minutes"), ({"output_tick_seconds": 37}, 37, "seconds")],
+)
+async def test_legacy_tick_settings_migrate_on_save(
+    hass: HomeAssistant, legacy: dict, value: float, unit: str
+) -> None:
+    entry = await setup_entry(hass, make_entry("", **legacy))
+    flow = await hass.config_entries.options.async_init(entry.entry_id)
+    flow = await hass.config_entries.options.async_configure(
+        flow["flow_id"], {"axis_source": "time_of_day"}
+    )
+    values = form_defaults(flow)
+    assert values["output"][CONF_TICK_VALUE] == value
+    assert values["output"][CONF_TICK_UNIT] == unit
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], values)
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert entry.options[CONF_TICK_VALUE] == value
+    assert entry.options[CONF_TICK_UNIT] == unit
+    assert CONF_TICK not in entry.options
+    assert "interval" not in entry.options
+
+
+@pytest.mark.parametrize("value", [0, -1, True, "2", None, float("nan"), float("inf"), 1201, 1.5])
+def test_invalid_calendar_tick(value: object) -> None:
+    assert validate_settings({**SETTINGS, CONF_TICK_VALUE: value, CONF_TICK_UNIT: "months"}) == {
+        CONF_TICK_VALUE: "invalid_tick"
+    }
+
+
+def test_invalid_tick_unit() -> None:
+    assert validate_settings({**SETTINGS, CONF_TICK_UNIT: "years"}) == {
+        CONF_TICK_UNIT: "invalid_tick_unit"
+    }
 
 
 async def test_options_flow_rejects_used_target(hass: HomeAssistant, target: str) -> None:
@@ -140,7 +201,8 @@ def group_settings(values, *, include_target=True):
     groups = {
         "input": ["input_entity", "x_min", "x_max", "x_step", "x_wrap", "input_decimals"],
         "output": [
-            "output_tick_seconds",
+            "output_tick",
+            "output_tick_unit",
             "interpolation",
             "min_value",
             "max_value",
@@ -207,7 +269,8 @@ async def test_sensor_only_setup_needs_no_manual_settings(hass: HomeAssistant) -
     defaults = form_defaults(flow)
     assert set(defaults) == {"input", "output", "graph"}
     assert defaults["input"] == {"input_decimals": 2}
-    assert defaults["output"][CONF_TICK] == 300
+    assert defaults["output"][CONF_TICK_VALUE] == 5
+    assert defaults["output"][CONF_TICK_UNIT] == "minutes"
     assert defaults["output"][CONF_STEP] == 0.5
     assert defaults["graph"] == {"x_label_step": 0, "y_label_step": 0}
     fields = schema_fields(flow["data_schema"])
@@ -232,7 +295,7 @@ async def test_reopen_settings_preserves_every_value(hass: HomeAssistant, target
         "x_max": 40,
         "x_step": 0.25,
         "x_wrap": False,
-        "output_tick_seconds": 37,
+        "output_tick": 37,
         "watch_target": True,
         "write_threshold": 1.25,
         "x_label_step": 10,

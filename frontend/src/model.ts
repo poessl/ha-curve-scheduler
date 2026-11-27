@@ -76,7 +76,8 @@ export interface InstanceConfig {
   x_label_step?: number;
   y_label_step?: number;
   axis?: AxisConfig;
-  output_tick_seconds?: number;
+  output_tick?: number;
+  output_tick_unit?: "seconds" | "minutes" | "hours" | "days" | "weeks" | "months";
   target: string;
   interval: number;
   interpolation: Mode;

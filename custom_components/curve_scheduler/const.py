@@ -74,6 +74,18 @@ ATTR_DATE: Final = "date"
 
 # Generic input axis and output cadence. Legacy interval remains minutes.
 CONF_TICK: Final = "output_tick_seconds"
+CONF_TICK_VALUE: Final = "output_tick"
+CONF_TICK_UNIT: Final = "output_tick_unit"
+TICK_UNITS: Final = ["seconds", "minutes", "hours", "days", "weeks", "months"]
+# Limit the cadence to roughly a century, keeping scheduled datetimes in range.
+TICK_MAX_VALUES: Final = {
+    "seconds": 3153600000,
+    "minutes": 52560000,
+    "hours": 876000,
+    "days": 36500,
+    "weeks": 5200,
+    "months": 1200,
+}
 CONF_AXIS: Final = "axis_source"
 CONF_INPUT: Final = "input_entity"
 CONF_X_MIN: Final = "x_min"

@@ -20,6 +20,7 @@ from homeassistant.helpers import selector
 import probatio as vol
 
 from .axis import axis_config
+from .cadence import tick_settings
 from .const import (
     AXIS_SOURCES,
     CONF_AXIS,
@@ -34,6 +35,8 @@ from .const import (
     CONF_TARGET,
     CONF_THRESHOLD,
     CONF_TICK,
+    CONF_TICK_UNIT,
+    CONF_TICK_VALUE,
     CONF_UNIT,
     CONF_X_MAX,
     CONF_X_MIN,
@@ -48,6 +51,8 @@ from .const import (
     DOMAIN,
     INTERPOLATION_MODES,
     TARGET_DOMAINS,
+    TICK_MAX_VALUES,
+    TICK_UNITS,
 )
 from .model import validate_schedule
 
@@ -95,6 +100,7 @@ def _number(minimum: float, maximum: float) -> selector.NumberSelector:
 def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
     """Build the schema of the settings step."""
     fields: dict[Any, Any] = {}
+    tick_value, tick_unit = tick_settings(values)
     if include_target:
         fields[
             vol.Optional(CONF_TARGET, description={"suggested_value": values.get(CONF_TARGET)})
@@ -102,9 +108,12 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
     fields.update(
         {
             vol.Optional(
-                CONF_TICK,
-                default=values.get(CONF_TICK, values.get(CONF_INTERVAL, DEFAULT_INTERVAL) * 60),
-            ): _number(1, 86400),
+                CONF_TICK_VALUE,
+                default=tick_value,
+            ): _number(1, TICK_MAX_VALUES["seconds"]),
+            vol.Optional(CONF_TICK_UNIT, default=tick_unit): selector.SelectSelector(
+                selector.SelectSelectorConfig(options=TICK_UNITS, translation_key="tick_unit")
+            ),
             vol.Optional(
                 CONF_INTERPOLATION,
                 default=values.get(CONF_INTERPOLATION, DEFAULT_INTERPOLATION),
@@ -160,7 +169,8 @@ def settings_schema(values: dict[str, Any], include_target: bool) -> vol.Schema:
     groups = {
         "input": [CONF_INPUT, CONF_X_MIN, CONF_X_MAX, CONF_X_STEP, CONF_X_WRAP, "input_decimals"],
         "output": [
-            CONF_TICK,
+            CONF_TICK_VALUE,
+            CONF_TICK_UNIT,
             CONF_INTERPOLATION,
             CONF_MIN,
             CONF_MAX,
@@ -217,9 +227,24 @@ def validate_settings(user_input: dict[str, Any]) -> dict[str, str]:
         errors[CONF_STEP] = "step_positive"
     if float(user_input.get(CONF_THRESHOLD, DEFAULT_THRESHOLD)) < 0:
         errors[CONF_THRESHOLD] = "threshold_negative"
-    tick = user_input.get(CONF_TICK, user_input.get(CONF_INTERVAL, DEFAULT_INTERVAL) * 60)
-    if not isinstance(tick, (int, float)) or not math.isfinite(tick) or not 1 <= tick <= 86400:
-        errors[CONF_TICK] = "invalid_tick"
+    tick = user_input.get(
+        CONF_TICK_VALUE,
+        user_input.get(CONF_TICK, user_input.get(CONF_INTERVAL, DEFAULT_INTERVAL)),
+    )
+    unit = user_input.get(
+        CONF_TICK_UNIT,
+        "seconds" if CONF_TICK_VALUE in user_input or CONF_TICK in user_input else "minutes",
+    )
+    if unit not in TICK_UNITS:
+        errors[CONF_TICK_UNIT] = "invalid_tick_unit"
+    elif (
+        isinstance(tick, bool)
+        or not isinstance(tick, (int, float))
+        or not math.isfinite(tick)
+        or not 1 <= tick <= TICK_MAX_VALUES[unit]
+        or (unit == "months" and tick != int(tick))
+    ):
+        errors[CONF_TICK_VALUE] = "invalid_tick"
     source = user_input.get(CONF_AXIS, "time_of_day")
     if source not in AXIS_SOURCES:
         errors[CONF_AXIS] = "invalid_axis"
@@ -270,10 +295,11 @@ def clean_settings(user_input: dict[str, Any]) -> dict[str, Any]:
     """Normalize numeric types and optional fields."""
     result = {CONF_THRESHOLD: DEFAULT_THRESHOLD, **user_input}
     result["input_decimals"] = int(result.get("input_decimals", 2))
-    if CONF_INTERVAL in result:
-        result[CONF_INTERVAL] = int(result[CONF_INTERVAL])
-    if CONF_TICK in result:
-        result[CONF_TICK] = float(result[CONF_TICK])
+    tick_value, tick_unit = tick_settings(result)
+    result[CONF_TICK_VALUE] = tick_value
+    result[CONF_TICK_UNIT] = tick_unit
+    result.pop(CONF_TICK, None)
+    result.pop(CONF_INTERVAL, None)
     for key in (CONF_MIN, CONF_MAX, CONF_STEP, CONF_THRESHOLD):
         result[key] = float(result[key])
     if result.get(CONF_AXIS, "time_of_day") != "sensor":

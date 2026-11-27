@@ -24,7 +24,6 @@
           "unit": "Unit",
           "holiday_source": "Holiday source",
           "write_threshold": "Write threshold",
-          "output_tick_seconds": "Output tick (seconds)",
           "input_entity": "Input entity",
           "x_min": "X minimum",
           "x_max": "X maximum",
@@ -33,7 +32,9 @@
           "x_label_step": "X-axis label interval",
           "y_label_step": "Y-axis label interval",
           "watch_target": "Watch target changes as offset",
-          "input_decimals": "Input display decimals"
+          "input_decimals": "Input display decimals",
+          "output_tick": "Output tick",
+          "output_tick_unit": "Time unit"
         },
         "data_description": {
           "interpolation": "How the value changes between two points.",
@@ -43,13 +44,14 @@
           "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit.",
           "holiday_source": "Optional: a Workday binary sensor or a calendar (every event is a day off).",
           "write_threshold": "Optional target only: write when the value changes by at least this amount (0 = every change). Does not affect output sensors.",
-          "output_tick_seconds": "Recalculates and updates the output sensors every 1–86400 seconds, including without a target. Also applies to an optional target.",
           "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
           "x_step": "Point movement resolution; the sampled input is not rounded.",
           "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
           "y_label_step": "0 = automatic; otherwise the spacing in output units.",
           "watch_target": "Keep external target adjustments as a persistent additive offset.",
-          "input_decimals": "0–6 decimal places for displayed numeric input values. Curve evaluation keeps full precision; clock times keep their time format."
+          "input_decimals": "0–6 decimal places for displayed numeric input values. Curve evaluation keeps full precision; clock times keep their time format.",
+          "output_tick": "Recalculates sensors and the optional target at the selected interval. Use a value of at least 1, up to about 100 years; months must be whole numbers.",
+          "output_tick_unit": "Days and weeks keep local clock time. Months follow the calendar, using the last day of shorter months when needed."
         },
         "sections": {
           "input": {
@@ -82,20 +84,22 @@
           "output": {
             "name": "Output calculation",
             "data": {
-              "output_tick_seconds": "Output tick (seconds)",
               "interpolation": "Transition between points",
               "min_value": "Minimum",
               "max_value": "Maximum",
               "step": "Rounding step",
-              "unit": "Unit"
+              "unit": "Unit",
+              "output_tick": "Output tick",
+              "output_tick_unit": "Time unit"
             },
             "data_description": {
-              "output_tick_seconds": "Recalculates and updates the output sensors every 1–86400 seconds, including without a target. Also applies to an optional target.",
               "interpolation": "How the value changes between two points.",
               "min_value": "Lowest allowed value. Also the bottom of the chart.",
               "max_value": "Highest allowed value. Also the top of the chart.",
               "step": "Rounds the sensor output and optional target value to this step, e.g. 0.5.",
-              "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit."
+              "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit.",
+              "output_tick": "Recalculates sensors and the optional target at the selected interval. Use a value of at least 1, up to about 100 years; months must be whole numbers.",
+              "output_tick_unit": "Days and weeks keep local clock time. Months follow the calendar, using the last day of shorter months when needed."
             }
           },
           "graph": {
@@ -117,14 +121,15 @@
       "max_not_greater": "The maximum must be greater than the minimum.",
       "step_positive": "The rounding step must be greater than 0.",
       "threshold_negative": "The threshold must not be negative.",
-      "invalid_tick": "Tick must be between 1 and 86400 seconds.",
+      "invalid_tick": "Use an interval of at least 1 and at most about 100 years; months must be whole numbers.",
       "invalid_axis": "Enter finite ascending X limits and a positive resolution no larger than the range.",
       "input_required": "Choose a sensor, input number or number entity.",
       "invalid_number": "Enter a finite number.",
       "curve_out_of_range": "Saved points are outside these limits. Edit the curve before reducing the limits.",
       "invalid_label_step": "Use 0 for automatic labels or a positive spacing producing at most 100 intervals.",
       "input_is_target": "Input and target must differ to avoid an output feeding back into its own input.",
-      "invalid_input_decimals": "Enter a whole number from 0 to 6."
+      "invalid_input_decimals": "Enter a whole number from 0 to 6.",
+      "invalid_tick_unit": "Choose a valid time unit."
     },
     "abort": {
       "already_configured": "This target already has a time profile.",
@@ -151,7 +156,6 @@
           "unit": "Unit",
           "holiday_source": "Holiday source",
           "write_threshold": "Write threshold",
-          "output_tick_seconds": "Output tick (seconds)",
           "input_entity": "Input entity",
           "x_min": "X minimum",
           "x_max": "X maximum",
@@ -160,7 +164,9 @@
           "x_label_step": "X-axis label interval",
           "y_label_step": "Y-axis label interval",
           "watch_target": "Watch target changes as offset",
-          "input_decimals": "Input display decimals"
+          "input_decimals": "Input display decimals",
+          "output_tick": "Output tick",
+          "output_tick_unit": "Time unit"
         },
         "data_description": {
           "target_entity": "Optional. Without a target the calculated output is available as a sensor.",
@@ -171,13 +177,14 @@
           "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit.",
           "holiday_source": "Optional: a Workday binary sensor or a calendar (every event is a day off).",
           "write_threshold": "Optional target only: write when the value changes by at least this amount (0 = every change). Does not affect output sensors.",
-          "output_tick_seconds": "Recalculates and updates the output sensors every 1–86400 seconds, including without a target. Also applies to an optional target.",
           "x_wrap": "With wrapping the upper limit is exclusive. Otherwise out-of-range inputs clamp to the limits.",
           "x_step": "Point movement resolution; the sampled input is not rounded.",
           "x_label_step": "0 = automatic. Minutes for time of day; otherwise X units. Independent of point snapping.",
           "y_label_step": "0 = automatic; otherwise the spacing in output units.",
           "watch_target": "Keep external target adjustments as a persistent additive offset.",
-          "input_decimals": "0–6 decimal places for displayed numeric input values. Curve evaluation keeps full precision; clock times keep their time format."
+          "input_decimals": "0–6 decimal places for displayed numeric input values. Curve evaluation keeps full precision; clock times keep their time format.",
+          "output_tick": "Recalculates sensors and the optional target at the selected interval. Use a value of at least 1, up to about 100 years; months must be whole numbers.",
+          "output_tick_unit": "Days and weeks keep local clock time. Months follow the calendar, using the last day of shorter months when needed."
         },
         "sections": {
           "input": {
@@ -212,20 +219,22 @@
           "output": {
             "name": "Output calculation",
             "data": {
-              "output_tick_seconds": "Output tick (seconds)",
               "interpolation": "Transition between points",
               "min_value": "Minimum",
               "max_value": "Maximum",
               "step": "Rounding step",
-              "unit": "Unit"
+              "unit": "Unit",
+              "output_tick": "Output tick",
+              "output_tick_unit": "Time unit"
             },
             "data_description": {
-              "output_tick_seconds": "Recalculates and updates the output sensors every 1–86400 seconds, including without a target. Also applies to an optional target.",
               "interpolation": "How the value changes between two points.",
               "min_value": "Lowest allowed value. Also the bottom of the chart.",
               "max_value": "Highest allowed value. Also the top of the chart.",
               "step": "Rounds the sensor output and optional target value to this step, e.g. 0.5.",
-              "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit."
+              "unit": "Unit for output sensors and the chart. Choose a Home Assistant unit, enter a custom unit, or leave empty for no unit.",
+              "output_tick": "Recalculates sensors and the optional target at the selected interval. Use a value of at least 1, up to about 100 years; months must be whole numbers.",
+              "output_tick_unit": "Days and weeks keep local clock time. Months follow the calendar, using the last day of shorter months when needed."
             }
           },
           "graph": {
@@ -247,14 +256,15 @@
       "step_positive": "The rounding step must be greater than 0.",
       "threshold_negative": "The threshold must not be negative.",
       "target_in_use": "This target already has another time profile.",
-      "invalid_tick": "Tick must be between 1 and 86400 seconds.",
+      "invalid_tick": "Use an interval of at least 1 and at most about 100 years; months must be whole numbers.",
       "invalid_axis": "Enter finite ascending X limits and a positive resolution no larger than the range.",
       "input_required": "Choose a sensor, input number or number entity.",
       "invalid_number": "Enter a finite number.",
       "curve_out_of_range": "Saved points are outside these limits. Edit the curve before reducing the limits.",
       "invalid_label_step": "Use 0 for automatic labels or a positive spacing producing at most 100 intervals.",
       "input_is_target": "Input and target must differ to avoid an output feeding back into its own input.",
-      "invalid_input_decimals": "Enter a whole number from 0 to 6."
+      "invalid_input_decimals": "Enter a whole number from 0 to 6.",
+      "invalid_tick_unit": "Choose a valid time unit."
     }
   },
   "selector": {
@@ -272,6 +282,16 @@
         "month_of_year": "Month of year",
         "sensor": "Sensor value",
         "day_of_week": "Day of week"
+      }
+    },
+    "tick_unit": {
+      "options": {
+        "seconds": "Seconds",
+        "minutes": "Minutes",
+        "hours": "Hours",
+        "days": "Days",
+        "weeks": "Weeks",
+        "months": "Months"
       }
     }
   },

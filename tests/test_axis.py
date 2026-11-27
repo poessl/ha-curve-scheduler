@@ -349,7 +349,8 @@ async def test_numeric_parameters_can_be_changed_after_setup(
                 "step": 0.25,
                 "x_label_step": 20,
                 "y_label_step": 10,
-                "output_tick_seconds": 30,
+                "output_tick": 30,
+                "output_tick_unit": "seconds",
             }
         ),
     )
@@ -360,7 +361,8 @@ async def test_numeric_parameters_can_be_changed_after_setup(
     assert runtime.axis["max"] == 50
     assert runtime.axis["step"] == 0.5
     assert (runtime.minimum, runtime.maximum, runtime.step) == (10, 80, 0.25)
-    assert runtime.tick_seconds == 30
+    assert runtime.config_dict()["output_tick"] == 30
+    assert runtime.config_dict()["output_tick_unit"] == "seconds"
     assert runtime.config_dict()["x_label_step"] == 20
     assert runtime.config_dict()["y_label_step"] == 10
     assert runtime.schedule_dict()["curve"] == curve

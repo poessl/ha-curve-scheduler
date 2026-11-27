@@ -29,13 +29,13 @@ from homeassistant.helpers.event import (
     async_track_point_in_time,
     async_track_point_in_utc_time,
     async_track_state_change_event,
-    async_track_time_interval,
 )
 from homeassistant.helpers.start import async_at_started
 from homeassistant.util import dt as dt_util
 
 from .anchors import resolve_positions, source_coordinate
 from .axis import axis_config, default_curve, evaluate_curve, input_value
+from .cadence import next_tick, tick_settings
 from .conditions import ScheduleCondition, async_compile_schedule_condition
 from .const import (
     CONF_HOLIDAY_SOURCE,
@@ -135,6 +135,8 @@ class CurveSchedulerRuntime:
         self._listeners: list[Callable[[], None]] = []
         self._unsubs: list[CALLBACK_TYPE] = []
         self._override_unsub: CALLBACK_TYPE | None = None
+        self._tick_unsub: CALLBACK_TYPE | None = None
+        self._tick_anchor = dt_util.now()
         self._unavailable_warned = False
         self._last_day: date | None = None
         self._stopped = False
@@ -158,11 +160,6 @@ class CurveSchedulerRuntime:
     def interval(self) -> int:
         """Return the write interval in minutes."""
         return int(self.options.get(CONF_INTERVAL, DEFAULT_INTERVAL))
-
-    @property
-    def tick_seconds(self) -> float:
-        """Output evaluation cadence, falling back to the legacy minute interval."""
-        return float(self.options.get("output_tick_seconds", self.interval * 60))
 
     @property
     def axis(self) -> dict[str, Any]:
@@ -223,11 +220,13 @@ class CurveSchedulerRuntime:
 
     def config_dict(self) -> dict[str, Any]:
         """Return the configuration relevant for the card."""
+        tick_value, tick_unit = tick_settings(self.options)
         return {
             "target": self.target,
             "watch_target": bool(self.options.get("watch_target", False)),
             "interval": self.interval,
-            "output_tick_seconds": self.tick_seconds,
+            "output_tick": tick_value,
+            "output_tick_unit": tick_unit,
             "axis": self.axis,
             "input_decimals": int(self.options.get("input_decimals", 2)),
             "x_label_step": float(self.options.get("x_label_step", 0)),
@@ -399,10 +398,8 @@ class CurveSchedulerRuntime:
                     self.hass, [self.axis["input_entity"]], self._async_input_changed
                 )
             )
-        next_tick = dt_util.utcnow() + timedelta(seconds=self.tick_seconds)
-        self._unsubs.append(
-            async_track_point_in_utc_time(self.hass, self._async_start_interval, next_tick)
-        )
+        self._tick_anchor = now
+        self._schedule_tick()
         self._schedule_override_expiry()
         self._compute(now)
         self._unsubs.append(async_at_started(self.hass, self._async_hass_started))
@@ -411,6 +408,9 @@ class CurveSchedulerRuntime:
         """Remove listeners and timers."""
         ir.async_delete_issue(self.hass, "curve_scheduler", f"anchors_{self.entry.entry_id}")
         self._stopped = True
+        if self._tick_unsub:
+            self._tick_unsub()
+            self._tick_unsub = None
         for checker in self._conditions.values():
             checker.async_unload()
         self._conditions.clear()
@@ -428,22 +428,30 @@ class CurveSchedulerRuntime:
     async def _async_hass_started(self, _hass: HomeAssistant) -> None:
         await self.async_update(force=True)
 
-    async def _async_start_interval(self, _now: datetime) -> None:
+    @callback
+    def _schedule_tick(self) -> None:
+        """Keep one pending timer for the next output update."""
         if self._stopped:
             return
-        self._unsubs.append(
-            async_track_time_interval(
-                self.hass, self._async_tick, timedelta(seconds=self.tick_seconds)
-            )
+        value, unit = tick_settings(self.options)
+        self._tick_unsub = async_track_point_in_utc_time(
+            self.hass,
+            self._async_tick,
+            next_tick(self._tick_anchor, dt_util.now(), value, unit),
         )
-        await self._async_tick(_now)
 
     async def _async_tick(self, _now: datetime) -> None:
-        now = dt_util.now()
-        if self._last_day != now.date():
-            self._last_day = now.date()
-            await self._async_cleanup_exceptions(now.date())
-        await self.async_update(force=False)
+        self._tick_unsub = None
+        if self._stopped:
+            return
+        try:
+            now = dt_util.now()
+            if self._last_day != now.date():
+                self._last_day = now.date()
+                await self._async_cleanup_exceptions(now.date())
+            await self.async_update(force=False)
+        finally:
+            self._schedule_tick()
 
     @callback
     def _async_input_changed(self, _event: Event[EventStateChangedData]) -> None:

@@ -24,7 +24,6 @@
           "unit": "Einheit",
           "holiday_source": "Feiertagsquelle",
           "write_threshold": "Schreib-Schwelle",
-          "output_tick_seconds": "Ausgangsintervall (Sekunden)",
           "input_entity": "Eingangsentität",
           "x_min": "X-Minimum",
           "x_max": "X-Maximum",
@@ -33,7 +32,9 @@
           "x_label_step": "X-Beschriftungsabstand",
           "y_label_step": "Y-Beschriftungsabstand",
           "watch_target": "Zieländerungen als Versatz übernehmen",
-          "input_decimals": "Dezimalstellen der Eingangsanzeige"
+          "input_decimals": "Dezimalstellen der Eingangsanzeige",
+          "output_tick": "Ausgangsintervall",
+          "output_tick_unit": "Zeiteinheit"
         },
         "data_description": {
           "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
@@ -43,13 +44,14 @@
           "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen.",
           "holiday_source": "Optional: ein Arbeitstag-Binärsensor (Workday) oder ein Kalender (jedes Ereignis = freier Tag).",
           "write_threshold": "Nur für das optionale Ziel: Schreiben ab dieser Wertänderung (0 = bei jeder Änderung). Beeinflusst die Ausgabesensoren nicht.",
-          "output_tick_seconds": "Berechnet und aktualisiert die Ausgabesensoren alle 1–86400 Sekunden, auch ohne Ziel. Gilt ebenfalls für ein optionales Ziel.",
           "x_wrap": "Obergrenze ist beim Umlauf exklusiv. Sonst werden Werte an den Grenzen begrenzt.",
           "x_step": "Schrittweite beim Verschieben von Punkten; der Eingang wird nicht gerundet.",
           "x_label_step": "0 = automatisch. Tageszeit: Minuten; sonst X-Einheiten. Unabhängig vom Einrasten der Punkte.",
           "y_label_step": "0 = automatisch; sonst Abstand in Ausgangseinheiten.",
           "watch_target": "Externe Sollwertänderungen als dauerhaften Versatz übernehmen.",
-          "input_decimals": "0–6 Dezimalstellen für numerische Eingangswerte in der Anzeige. Die Kurvenberechnung bleibt ungerundet; Uhrzeiten werden weiterhin als Uhrzeit angezeigt."
+          "input_decimals": "0–6 Dezimalstellen für numerische Eingangswerte in der Anzeige. Die Kurvenberechnung bleibt ungerundet; Uhrzeiten werden weiterhin als Uhrzeit angezeigt.",
+          "output_tick": "Berechnet Sensoren und optionales Ziel im gewählten Intervall. Wert ab 1, höchstens etwa 100 Jahre; Monate müssen ganzzahlig sein.",
+          "output_tick_unit": "Tage und Wochen behalten die lokale Uhrzeit bei. Monate folgen dem Kalender und verwenden bei Bedarf den letzten Tag des Monats."
         },
         "sections": {
           "input": {
@@ -82,20 +84,22 @@
           "output": {
             "name": "Ausgangsberechnung",
             "data": {
-              "output_tick_seconds": "Ausgangsintervall (Sekunden)",
               "interpolation": "Übergang zwischen Punkten",
               "min_value": "Minimum",
               "max_value": "Maximum",
               "step": "Schrittweite",
-              "unit": "Einheit"
+              "unit": "Einheit",
+              "output_tick": "Ausgangsintervall",
+              "output_tick_unit": "Zeiteinheit"
             },
             "data_description": {
-              "output_tick_seconds": "Berechnet und aktualisiert die Ausgabesensoren alle 1–86400 Sekunden, auch ohne Ziel. Gilt ebenfalls für ein optionales Ziel.",
               "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
               "min_value": "Kleinster erlaubter Wert. Gleichzeitig der untere Rand des Diagramms.",
               "max_value": "Größter erlaubter Wert. Gleichzeitig der obere Rand des Diagramms.",
               "step": "Rundet den Sensor-Ausgabewert und den optionalen Zielwert auf diese Schrittweite, z. B. 0.5.",
-              "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen."
+              "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen.",
+              "output_tick": "Berechnet Sensoren und optionales Ziel im gewählten Intervall. Wert ab 1, höchstens etwa 100 Jahre; Monate müssen ganzzahlig sein.",
+              "output_tick_unit": "Tage und Wochen behalten die lokale Uhrzeit bei. Monate folgen dem Kalender und verwenden bei Bedarf den letzten Tag des Monats."
             }
           },
           "graph": {
@@ -117,14 +121,15 @@
       "max_not_greater": "Das Maximum muss größer als das Minimum sein.",
       "step_positive": "Die Schrittweite muss größer als 0 sein.",
       "threshold_negative": "Die Schwelle darf nicht negativ sein.",
-      "invalid_tick": "Intervall muss zwischen 1 und 86400 Sekunden liegen.",
+      "invalid_tick": "Intervall ab 1 und höchstens etwa 100 Jahre wählen; Monate müssen ganzzahlig sein.",
       "invalid_axis": "Endliche X-Grenzen und eine positive Schrittweite innerhalb der Spanne angeben.",
       "input_required": "Einen Sensor, Zahlenhelfer oder eine Zahlenentität wählen.",
       "invalid_number": "Eine endliche Zahl angeben.",
       "curve_out_of_range": "Gespeicherte Punkte liegen außerhalb der Grenzen. Zuerst die Punkte ändern.",
       "invalid_label_step": "0 für automatisch oder einen positiven Abstand für höchstens 100 Intervalle wählen.",
       "input_is_target": "Eingang und Ziel müssen unterschiedlich sein, um eine Rückkopplung zu vermeiden.",
-      "invalid_input_decimals": "Eine ganze Zahl von 0 bis 6 eingeben."
+      "invalid_input_decimals": "Eine ganze Zahl von 0 bis 6 eingeben.",
+      "invalid_tick_unit": "Bitte eine gültige Zeiteinheit wählen."
     },
     "abort": {
       "already_configured": "Für dieses Ziel gibt es bereits ein Zeitprofil.",
@@ -151,7 +156,6 @@
           "unit": "Einheit",
           "holiday_source": "Feiertagsquelle",
           "write_threshold": "Schreib-Schwelle",
-          "output_tick_seconds": "Ausgangsintervall (Sekunden)",
           "input_entity": "Eingangsentität",
           "x_min": "X-Minimum",
           "x_max": "X-Maximum",
@@ -160,7 +164,9 @@
           "x_label_step": "X-Beschriftungsabstand",
           "y_label_step": "Y-Beschriftungsabstand",
           "watch_target": "Zieländerungen als Versatz übernehmen",
-          "input_decimals": "Dezimalstellen der Eingangsanzeige"
+          "input_decimals": "Dezimalstellen der Eingangsanzeige",
+          "output_tick": "Ausgangsintervall",
+          "output_tick_unit": "Zeiteinheit"
         },
         "data_description": {
           "target_entity": "Optional. Ohne Ziel ist der berechnete Ausgang als Sensor verfügbar.",
@@ -171,13 +177,14 @@
           "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen.",
           "holiday_source": "Optional: ein Arbeitstag-Binärsensor (Workday) oder ein Kalender (jedes Ereignis = freier Tag).",
           "write_threshold": "Nur für das optionale Ziel: Schreiben ab dieser Wertänderung (0 = bei jeder Änderung). Beeinflusst die Ausgabesensoren nicht.",
-          "output_tick_seconds": "Berechnet und aktualisiert die Ausgabesensoren alle 1–86400 Sekunden, auch ohne Ziel. Gilt ebenfalls für ein optionales Ziel.",
           "x_wrap": "Obergrenze ist beim Umlauf exklusiv. Sonst werden Werte an den Grenzen begrenzt.",
           "x_step": "Schrittweite beim Verschieben von Punkten; der Eingang wird nicht gerundet.",
           "x_label_step": "0 = automatisch. Tageszeit: Minuten; sonst X-Einheiten. Unabhängig vom Einrasten der Punkte.",
           "y_label_step": "0 = automatisch; sonst Abstand in Ausgangseinheiten.",
           "watch_target": "Externe Sollwertänderungen als dauerhaften Versatz übernehmen.",
-          "input_decimals": "0–6 Dezimalstellen für numerische Eingangswerte in der Anzeige. Die Kurvenberechnung bleibt ungerundet; Uhrzeiten werden weiterhin als Uhrzeit angezeigt."
+          "input_decimals": "0–6 Dezimalstellen für numerische Eingangswerte in der Anzeige. Die Kurvenberechnung bleibt ungerundet; Uhrzeiten werden weiterhin als Uhrzeit angezeigt.",
+          "output_tick": "Berechnet Sensoren und optionales Ziel im gewählten Intervall. Wert ab 1, höchstens etwa 100 Jahre; Monate müssen ganzzahlig sein.",
+          "output_tick_unit": "Tage und Wochen behalten die lokale Uhrzeit bei. Monate folgen dem Kalender und verwenden bei Bedarf den letzten Tag des Monats."
         },
         "sections": {
           "input": {
@@ -212,20 +219,22 @@
           "output": {
             "name": "Ausgangsberechnung",
             "data": {
-              "output_tick_seconds": "Ausgangsintervall (Sekunden)",
               "interpolation": "Übergang zwischen Punkten",
               "min_value": "Minimum",
               "max_value": "Maximum",
               "step": "Schrittweite",
-              "unit": "Einheit"
+              "unit": "Einheit",
+              "output_tick": "Ausgangsintervall",
+              "output_tick_unit": "Zeiteinheit"
             },
             "data_description": {
-              "output_tick_seconds": "Berechnet und aktualisiert die Ausgabesensoren alle 1–86400 Sekunden, auch ohne Ziel. Gilt ebenfalls für ein optionales Ziel.",
               "interpolation": "Wie sich der Wert zwischen zwei Punkten ändert.",
               "min_value": "Kleinster erlaubter Wert. Gleichzeitig der untere Rand des Diagramms.",
               "max_value": "Größter erlaubter Wert. Gleichzeitig der obere Rand des Diagramms.",
               "step": "Rundet den Sensor-Ausgabewert und den optionalen Zielwert auf diese Schrittweite, z. B. 0.5.",
-              "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen."
+              "unit": "Einheit der Ausgabesensoren und im Diagramm. Aus Home Assistant wählen, eine eigene eingeben oder für keine Einheit leer lassen.",
+              "output_tick": "Berechnet Sensoren und optionales Ziel im gewählten Intervall. Wert ab 1, höchstens etwa 100 Jahre; Monate müssen ganzzahlig sein.",
+              "output_tick_unit": "Tage und Wochen behalten die lokale Uhrzeit bei. Monate folgen dem Kalender und verwenden bei Bedarf den letzten Tag des Monats."
             }
           },
           "graph": {
@@ -247,14 +256,15 @@
       "step_positive": "Die Schrittweite muss größer als 0 sein.",
       "threshold_negative": "Die Schwelle darf nicht negativ sein.",
       "target_in_use": "Für dieses Ziel gibt es bereits ein anderes Zeitprofil.",
-      "invalid_tick": "Intervall muss zwischen 1 und 86400 Sekunden liegen.",
+      "invalid_tick": "Intervall ab 1 und höchstens etwa 100 Jahre wählen; Monate müssen ganzzahlig sein.",
       "invalid_axis": "Endliche X-Grenzen und eine positive Schrittweite innerhalb der Spanne angeben.",
       "input_required": "Einen Sensor, Zahlenhelfer oder eine Zahlenentität wählen.",
       "invalid_number": "Eine endliche Zahl angeben.",
       "curve_out_of_range": "Gespeicherte Punkte liegen außerhalb der Grenzen. Zuerst die Punkte ändern.",
       "invalid_label_step": "0 für automatisch oder einen positiven Abstand für höchstens 100 Intervalle wählen.",
       "input_is_target": "Eingang und Ziel müssen unterschiedlich sein, um eine Rückkopplung zu vermeiden.",
-      "invalid_input_decimals": "Eine ganze Zahl von 0 bis 6 eingeben."
+      "invalid_input_decimals": "Eine ganze Zahl von 0 bis 6 eingeben.",
+      "invalid_tick_unit": "Bitte eine gültige Zeiteinheit wählen."
     }
   },
   "selector": {
@@ -272,6 +282,16 @@
         "month_of_year": "Monat im Jahr",
         "sensor": "Sensorwert",
         "day_of_week": "Wochentag"
+      }
+    },
+    "tick_unit": {
+      "options": {
+        "seconds": "Sekunden",
+        "minutes": "Minuten",
+        "hours": "Stunden",
+        "days": "Tage",
+        "weeks": "Wochen",
+        "months": "Monate"
       }
     }
   },

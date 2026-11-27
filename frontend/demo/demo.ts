@@ -41,7 +41,7 @@ const schedule: Schedule = {
   ],
   auto_cleanup: false,
 };
-const config: InstanceConfig = { watch_target: true, target: "number.circulation_setpoint", interval: 5, output_tick_seconds: 60, interpolation: "curve", min: 20, max: 70, step: 0.5, unit: "°C", holiday_source: null, threshold: 0 };
+const config: InstanceConfig = { watch_target: true, target: "number.circulation_setpoint", interval: 5, output_tick: 1, output_tick_unit: "minutes", interpolation: "curve", min: 20, max: 70, step: 0.5, unit: "°C", holiday_source: null, threshold: 0 };
 interface DemoInstance { title: string; config: InstanceConfig; schedule: Schedule; revision: number; offset?: number; enabled: boolean; override: { profile: string; until: string | null } | null; }
 const instances: Record<string, DemoInstance> = {
   demo: { title: text("Circulation", "Zirkulation"), config, schedule, revision: 7, offset: params.get("theme") === "dark" ? -3 : 5, enabled: true, override: null },
