@@ -13,6 +13,7 @@ from pytest_homeassistant.common import MockConfigEntry
 
 from custom_components.curve_scheduler.const import (
     CONF_HOLIDAY_SOURCE,
+    CONF_INITIAL_SCHEDULE,
     CONF_INTERPOLATION,
     CONF_INTERVAL,
     CONF_MAX,
@@ -23,6 +24,8 @@ from custom_components.curve_scheduler.const import (
     CONF_UNIT,
     DOMAIN,
 )
+
+from .schedules import example_schedule
 
 TARGET = "input_number.zirkulation_soll"
 
@@ -83,11 +86,15 @@ def entry_options(**overrides: Any) -> dict[str, Any]:
 
 
 def make_entry(target: str = TARGET, **overrides: Any) -> MockConfigEntry:
-    """Create a config entry (not yet added)."""
+    """Create an entry with a representative legacy two-plan schedule."""
     return MockConfigEntry(
         domain=DOMAIN,
         title="Zirkulation",
-        data={"name": "Zirkulation", CONF_TARGET: target},
+        data={
+            "name": "Zirkulation",
+            CONF_TARGET: target,
+            CONF_INITIAL_SCHEDULE: example_schedule(),
+        },
         options=entry_options(**overrides),
         unique_id=target,
     )

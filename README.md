@@ -77,16 +77,17 @@ Curve Scheduler**.
    without controlling a device.
 2. Set output limits and units. See [settings and defaults](#settings-and-defaults)
    for the remaining options.
-3. Complete setup. Two example plans, *Workday* and *Day off*, are created.
+3. Complete setup. One flat *Default* plan is created and selected as the fallback,
+   with no activation rules. Its initial value is the rounded midpoint of the output range.
 
 ### Edit and check your first plan
 
 1. Open **Curve Scheduler** in the Home Assistant sidebar and select your curve.
    A dashboard card is optional.
-2. Under **Plans**, select *Workday*. Drag a point or select it and type its time
+2. Under **Plans**, select *Default*. Drag a point or select it and type its time
    and value below the chart. The point table also supports editing without dragging.
-3. Under **Activations**, check which days or conditions select each plan and
-   choose the fallback plan. **Exceptions** can select a plan for a date range.
+3. Add more plans and **Activations** when needed. Without a matching activation,
+   the fallback plan applies. **Exceptions** can select a plan for a date range.
 4. Click **Save**.
 5. Check the active plan and **Curve value** in the summary or the curve's
    [entities](#entities). Saving applies the value immediately when the curve is

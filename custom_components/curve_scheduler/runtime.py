@@ -249,6 +249,13 @@ class CurveSchedulerRuntime:
                 stored = default_schedule(
                     self.minimum, self.maximum, self.step, self.hass.config.language
                 )
+                if self.axis["source"] != "time_of_day":
+                    stored["curve"] = [
+                        {
+                            "x": self.axis["min"],
+                            "v": stored["profiles"]["default"]["points"][0]["v"],
+                        }
+                    ]
             stored = migrate_data(stored)
             self.data = stored
             await self.store.async_save(self.data)

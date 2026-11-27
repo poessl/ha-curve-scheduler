@@ -6,6 +6,8 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.curve_scheduler.conditions import async_compile_condition
 
+from .schedules import example_schedule
+
 
 async def test_native_group_state_and_attribute(hass: HomeAssistant) -> None:
     config = {
@@ -35,13 +37,12 @@ def test_condition_activation_roundtrip_and_priority() -> None:
     from datetime import date
 
     from custom_components.curve_scheduler.model import (
-        default_schedule,
         normalize_schedule,
         resolve_day,
         validate_schedule,
     )
 
-    data = default_schedule(20, 70, 0.5, "en")
+    data = example_schedule()
     config = {"condition": "state", "entity_id": "sensor.mode", "state": "home"}
     data["activations"] = [
         {"type": "condition", "condition": config, "profile": "day_off"},
@@ -211,7 +212,7 @@ async def test_state_and_weekday_require_both_and_expose_fallback(hass: HomeAssi
     from datetime import date
 
     from custom_components.curve_scheduler.conditions import async_compile_schedule_condition
-    from custom_components.curve_scheduler.model import default_schedule, resolve_day
+    from custom_components.curve_scheduler.model import resolve_day
 
     config = {
         "condition": "and",
@@ -221,7 +222,7 @@ async def test_state_and_weekday_require_both_and_expose_fallback(hass: HomeAssi
         ],
     }
     checker, _ = await async_compile_schedule_condition(hass, config)
-    data = default_schedule(20, 70, 0.5, "en")
+    data = example_schedule()
     data["activations"] = [{"type": "condition", "profile": "workday", "condition": config}]
     friday = date(2026, 11, 27)
     hass.states.async_set("sensor.value", "4")

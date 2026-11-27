@@ -255,6 +255,9 @@ async def test_input_number_can_be_selected_and_evaluated(hass: HomeAssistant, t
     assert result["type"] is FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
     runtime = result["result"].runtime_data
+    schedule = runtime.schedule_dict()
+    schedule["profiles"]["default"]["curve"] = [{"x": 20, "v": 20}, {"x": 70, "v": 70}]
+    await runtime.async_save_schedule(schedule, runtime.revision)
     assert runtime.current.value == 40
     await hass.services.async_call(
         "input_number", "set_value", {"entity_id": target, "value": 55}, blocking=True

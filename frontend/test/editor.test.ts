@@ -55,6 +55,45 @@ afterEach(() => {
   editor.remove();
 });
 
+it("opens a single fallback plan without activations and allows deleting an added unused plan", async () => {
+  editor.data = {
+    ...editor.data,
+    revision: editor.data.revision + 1,
+    schedule: {
+      ...editor.data.schedule,
+      profiles: { default: { name: "Standard", color: "#e67e22", points: [{ t: "00:00", v: 45 }] } },
+      week: { mon: "default", tue: "default", wed: "default", thu: "default", fri: "default", sat: "default", sun: "default" },
+      holiday_profile: "default", fallback_profile: "default", activations: [], exceptions: [],
+    },
+  };
+  await settle();
+  expect(editor._profileId).toBe("default");
+  expect(editor.shadowRoot!.querySelectorAll('.chip[role="tab"]')).toHaveLength(1);
+  expect(curveElement()!.shownPoints).toEqual([{ t: "00:00", v: 45 }]);
+  editor._tab = "week";
+  await settle();
+  expect(editor.shadowRoot!.querySelector<HTMLSelectElement>(".fallback-plan")!.value).toBe("default");
+  expect(editor.shadowRoot!.querySelectorAll(".activation")).toHaveLength(0);
+  editor._tab = "profiles";
+  await settle();
+  editor.shadowRoot!.querySelector<HTMLButtonElement>(".profile-settings button.danger")!.click();
+  await settle();
+  expect(editor.shadowRoot!.textContent).toContain("Der letzte Plan kann nicht gelöscht werden.");
+  editor.shadowRoot!.querySelector<HTMLButtonElement>(".chips .add")!.click();
+  await settle();
+  expect(Object.keys(editor._draft.profiles)).toHaveLength(2);
+  const confirm = vi.fn(() => true);
+  vi.stubGlobal("confirm", confirm);
+  try {
+    editor.shadowRoot!.querySelector<HTMLButtonElement>(".profile-settings button.danger")!.click();
+    await settle();
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(Object.keys(editor._draft.profiles)).toEqual(["default"]);
+    expect(editor._draft.fallback_profile).toBe("default");
+    expect(editor._draft.activations).toEqual([]);
+  } finally { vi.unstubAllGlobals(); }
+});
+
 describe("curve-scheduler-editor: points", () => {
   it("renders a table row and a handle per point", () => {
     expect(rows()).toHaveLength(3);

@@ -82,54 +82,20 @@ def new_exception_id() -> str:
 
 
 def default_schedule(minimum: float, maximum: float, step: float, language: str) -> dict[str, Any]:
-    """Return the initial schedule with two example profiles."""
-    span = maximum - minimum
-
-    def level(fraction: float) -> float:
-        value = round_to_step(minimum + span * fraction, step)
-        return max(minimum, min(maximum, value))
-
-    low = level(0.5)
-    high = level(0.8)
-    german = language.lower().startswith("de")
+    """Return one constant fallback plan with no activation rules."""
+    value = max(minimum, min(maximum, round_to_step((minimum + maximum) / 2, step)))
     return {
         "profiles": {
-            "workday": {
-                "name": "Werktag" if german else "Workday",
+            "default": {
+                "name": "Standard" if language.lower().startswith("de") else "Default",
                 "color": DEFAULT_COLORS[0],
-                "points": [
-                    {"t": "05:00", "v": low},
-                    {"t": "05:30", "v": high},
-                    {"t": "08:30", "v": high},
-                    {"t": "09:00", "v": low},
-                    {"t": "17:00", "v": low},
-                    {"t": "17:30", "v": high},
-                    {"t": "21:30", "v": high},
-                    {"t": "22:00", "v": low},
-                ],
-            },
-            "day_off": {
-                "name": "Frei" if german else "Day off",
-                "color": DEFAULT_COLORS[1],
-                "points": [
-                    {"t": "07:00", "v": low},
-                    {"t": "07:30", "v": high},
-                    {"t": "22:00", "v": high},
-                    {"t": "22:30", "v": low},
-                ],
+                "points": [{"t": "00:00", "v": value}],
             },
         },
-        "week": {
-            "mon": "workday",
-            "tue": "workday",
-            "wed": "workday",
-            "thu": "workday",
-            "fri": "workday",
-            "sat": "day_off",
-            "sun": "day_off",
-        },
-        "holiday_profile": "day_off",
-        "fallback_profile": "workday",
+        "week": dict.fromkeys(WEEKDAYS, "default"),
+        "holiday_profile": "default",
+        "fallback_profile": "default",
+        "activations": [],
         "exceptions": [],
         "auto_cleanup": False,
         "enabled": True,

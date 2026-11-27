@@ -9,7 +9,6 @@ from homeassistant.util import dt as dt_util
 import pytest
 
 from custom_components.curve_scheduler.model import (
-    default_schedule,
     normalize_schedule,
     profile_usages,
     resolve_day,
@@ -17,11 +16,12 @@ from custom_components.curve_scheduler.model import (
 )
 
 from .conftest import make_entry, setup_entry
+from .schedules import example_schedule
 from .test_axis import numeric_entry
 
 
 def test_first_match_exceptions_and_fallback() -> None:
-    data = default_schedule(20, 70, 0.5, "en")
+    data = example_schedule()
     day = date(2026, 11, 26)
     data["activations"] = [
         {"type": "weekday", "days": ["thu"], "profile": "workday"},
@@ -56,7 +56,7 @@ def test_first_match_exceptions_and_fallback() -> None:
     ],
 )
 def test_invalid_activations(entries) -> None:
-    data = default_schedule(20, 70, 0.5, "en")
+    data = example_schedule()
     data["activations"] = entries
     assert validate_schedule(data, 20, 70)
 
@@ -103,7 +103,7 @@ async def test_legacy_schedule_migrates_without_changing_holiday_priority(
 ) -> None:
     from custom_components.curve_scheduler.store import ScheduleStore
 
-    legacy = default_schedule(20, 70, 0.5, "en")
+    legacy = example_schedule()
     legacy["curve"] = [{"x": 0, "v": 42}]
     with patch.object(ScheduleStore, "async_load", return_value=deepcopy(legacy)):
         entry = await setup_entry(
@@ -130,7 +130,7 @@ async def test_legacy_schedule_migrates_without_changing_holiday_priority(
 def test_multiple_weekdays_validation_matching_and_migration() -> None:
     from custom_components.curve_scheduler.store import migrate_data
 
-    data = default_schedule(20, 70, 0.5, "en")
+    data = example_schedule()
     data["activations"] = [{"type": "weekday", "days": ["mon", "wed", "fri"], "profile": "day_off"}]
     assert validate_schedule(data, 20, 70) == []
     for day, expected in [
@@ -151,7 +151,7 @@ def test_multiple_weekdays_validation_matching_and_migration() -> None:
 
 
 def test_selected_fallback_is_validated_persisted_and_protected() -> None:
-    data = default_schedule(20, 70, 0.5, "en")
+    data = example_schedule()
     data["activations"] = []
     data["fallback_profile"] = "day_off"
     assert resolve_day(data, date(2026, 11, 27), lambda *_: False).profile_id == "day_off"

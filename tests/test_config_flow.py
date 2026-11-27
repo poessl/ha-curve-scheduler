@@ -63,12 +63,11 @@ async def test_full_flow(hass: HomeAssistant, target: str) -> None:
     assert result["options"][CONF_TICK] == 300
     await hass.async_block_till_done()
 
-    # Example profiles were created and the entities exist.
+    # A single fallback plan was created and the entities exist.
     assert hass.states.get("sensor.zirkulation_setpoint") is not None
     assert hass.states.get("select.zirkulation_mode").attributes["options"] == [
         "auto",
-        "Workday",
-        "Day off",
+        "Default",
     ]
 
 

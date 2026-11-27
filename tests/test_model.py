@@ -17,26 +17,38 @@ from custom_components.curve_scheduler.model import (
     validate_update,
 )
 
+from .schedules import example_schedule
+
 
 @pytest.fixture
 def schedule() -> dict:
-    return default_schedule(20, 70, 0.5, "de")
+    return example_schedule("de")
 
 
 def codes(issues) -> list[str]:
     return [issue.code for issue in issues]
 
 
-def test_default_schedule_is_valid(schedule: dict) -> None:
+@pytest.mark.parametrize(("language", "name"), [("en", "Default"), ("de", "Standard")])
+def test_default_schedule_is_valid(language: str, name: str) -> None:
+    schedule = default_schedule(20, 70, 0.5, language)
     assert validate_schedule(schedule, 20, 70) == []
-    assert schedule["profiles"]["workday"]["name"] == "Werktag"
-    assert default_schedule(20, 70, 0.5, "en")["profiles"]["day_off"]["name"] == "Day off"
+    assert schedule["profiles"] == {
+        "default": {"name": name, "color": "#e67e22", "points": [{"t": "00:00", "v": 45}]}
+    }
+    assert schedule["fallback_profile"] == "default"
+    assert schedule["activations"] == []
+    assert schedule["exceptions"] == []
 
 
-def test_default_values_follow_range() -> None:
-    data = default_schedule(0, 10, 1, "en")
-    values = {p["v"] for p in data["profiles"]["workday"]["points"]}
-    assert values == {5.0, 8.0}
+@pytest.mark.parametrize(
+    ("minimum", "maximum", "step", "value"), [(0, 10, 1, 5), (1, 2, 0.2, 1.6), (0.1, 0.2, 1, 0.1)]
+)
+def test_default_values_follow_range(
+    minimum: float, maximum: float, step: float, value: float
+) -> None:
+    data = default_schedule(minimum, maximum, step, "en")
+    assert data["profiles"]["default"]["points"] == [{"t": "00:00", "v": value}]
 
 
 @pytest.mark.parametrize(
